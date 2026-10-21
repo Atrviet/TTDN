@@ -1,0 +1,2 @@
+"""AI StudyMate backend application."""
+
