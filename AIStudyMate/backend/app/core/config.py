@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
-    database_url: str = "postgresql+asyncpg://ai_studymate:ai_studymate_dev_password@localhost:5432/ai_studymate"
+    database_url: str = "postgresql+asyncpg://ai_studymate:ai_studymate_dev_password@localhost:5433/ai_studymate"
 
     jwt_secret_key: str = "replace-with-a-long-random-secret"
     jwt_algorithm: str = "HS256"
