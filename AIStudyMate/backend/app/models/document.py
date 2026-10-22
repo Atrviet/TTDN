@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, Enum, ForeignKey, Index, Integer, String, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, Enum, ForeignKey, Index, Integer, String, UniqueConstraint, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -21,6 +22,7 @@ class Document(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint("file_size >= 0", name="ck_documents_file_size_non_negative"),
         CheckConstraint("page_count IS NULL OR page_count > 0", name="ck_documents_page_count_positive"),
         Index("ix_documents_user_created_at", "user_id", "created_at"),
+        Index("ix_documents_user_status", "user_id", "processing_status"),
     )
 
     user_id: Mapped[UUID] = mapped_column(
@@ -38,11 +40,17 @@ class Document(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             values_callable=lambda enum: [item.value for item in enum],
         ),
         nullable=False,
-        default=DocumentProcessingStatus.PENDING,
-        server_default=DocumentProcessingStatus.PENDING.value,
+        default=DocumentProcessingStatus.UPLOADED,
+        server_default=DocumentProcessingStatus.UPLOADED.value,
         index=True,
     )
     page_count: Mapped[int | None] = mapped_column(Integer)
+    extracted_pages: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
+    pdf_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    requires_ocr: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    processing_error: Mapped[str | None] = mapped_column(String(500))
 
     user: Mapped[User] = relationship(back_populates="documents")
     chunks: Mapped[list[DocumentChunk]] = relationship(

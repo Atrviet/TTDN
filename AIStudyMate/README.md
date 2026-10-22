@@ -155,12 +155,106 @@ pytest -m "not integration"
 | `POSTGRES_USER` | Local PostgreSQL user |
 | `POSTGRES_PASSWORD` | Local PostgreSQL password; replace outside development |
 | `POSTGRES_PORT` | Host port mapped to PostgreSQL port 5432 |
-| `JWT_SECRET_KEY` | Future JWT signing secret; must be replaced before authentication is used |
-| `JWT_ALGORITHM` | Future JWT signing algorithm |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Future access-token lifetime |
+| `JWT_SECRET_KEY` | JWT signing secret; replace the development value before use |
+| `JWT_ALGORITHM` | JWT signing algorithm |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Access-token lifetime in minutes |
+| `REFRESH_TOKEN_EXPIRE_DAYS` | Refresh-token lifetime in days |
+| `JWT_ISSUER` | Expected JWT issuer claim |
+| `JWT_AUDIENCE` | Expected JWT audience claim |
 | `GEMINI_API_KEY` | Future Gemini credential; empty in STEP 02 |
 | `CHROMA_PERSIST_DIR` | Future local ChromaDB persistence directory |
 | `CORS_ORIGINS` | JSON array of allowed browser origins |
+| `DOCUMENT_STORAGE_DIR` | Private local filesystem root for uploaded PDFs |
+| `MAX_PDF_SIZE_MB` | Maximum streamed PDF upload size, default `20` MiB |
+
+## Authentication
+
+STEP 03 uses Argon2 password hashing and signed JWTs. Access and refresh tokens have distinct `type` claims and cannot be substituted for one another. Tokens also contain subject, role, JTI, issued-at, expiry, issuer, and audience claims.
+
+Public registration always creates a `student`; the client cannot self-assign the `admin` role. Role dependencies are available for future admin-only endpoints. Password hashing and verification run in a worker thread so CPU-bound Argon2 work does not block FastAPI's event loop.
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/api/v1/auth/register` | Register a student account |
+| `POST` | `/api/v1/auth/login` | OAuth2 password-form login using username or email |
+| `POST` | `/api/v1/auth/refresh` | Exchange a refresh token for a new token pair |
+| `GET` | `/api/v1/users/me` | Return the authenticated user's profile |
+
+Example registration:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"student1","email":"student1@example.com","password":"StrongPass123","full_name":"Student One"}'
+```
+
+OAuth2 login uses form data rather than JSON:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/auth/login \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -d 'username=student1&password=StrongPass123'
+```
+
+Use the returned access token:
+
+```bash
+curl http://127.0.0.1:8000/api/v1/users/me \
+  -H 'Authorization: Bearer ACCESS_TOKEN'
+```
+
+Refresh tokens are currently stateless. Token revocation, logout, reuse detection, and refresh-token persistence are not part of STEP 03.
+
+## PDF document management
+
+STEP 04 stores private PDF files on the local filesystem and keeps ownership, extraction results, metadata, and processing state in PostgreSQL. Files are never served as public static assets, and API responses never expose server filesystem paths.
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/api/v1/documents/upload` | Stream, validate, extract, and store an authenticated user's PDF |
+| `GET` | `/api/v1/documents` | List owned documents with `page` and `per_page` pagination |
+| `GET` | `/api/v1/documents/{document_id}` | Return owned document metadata |
+| `GET` | `/api/v1/documents/{document_id}/content` | Return extracted text grouped by PDF page |
+| `DELETE` | `/api/v1/documents/{document_id}` | Delete an owned document, its chunks, and its local file |
+
+Upload example:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/documents/upload \
+  -H 'Authorization: Bearer ACCESS_TOKEN' \
+  -F 'title=Database fundamentals' \
+  -F 'file=@/absolute/path/to/lesson.pdf;type=application/pdf'
+```
+
+List and read content:
+
+```bash
+curl 'http://127.0.0.1:8000/api/v1/documents?page=1&per_page=20' \
+  -H 'Authorization: Bearer ACCESS_TOKEN'
+
+curl http://127.0.0.1:8000/api/v1/documents/DOCUMENT_UUID/content \
+  -H 'Authorization: Bearer ACCESS_TOKEN'
+```
+
+Delete a document:
+
+```bash
+curl -X DELETE http://127.0.0.1:8000/api/v1/documents/DOCUMENT_UUID \
+  -H 'Authorization: Bearer ACCESS_TOKEN'
+```
+
+### Storage and extraction workflow
+
+1. The multipart body is streamed to a private staging file in 1 MiB chunks. Reading stops immediately when `MAX_PDF_SIZE_MB` is exceeded.
+2. PyMuPDF validates the real file structure, encryption state, page tree, images, and extractable text. Filename extensions and client MIME types are not trusted.
+3. Text is normalized per page while preserving line and paragraph boundaries and Unicode Vietnamese content.
+4. A UUID filename is atomically moved into a user-specific directory under `DOCUMENT_STORAGE_DIR`.
+5. PostgreSQL stores only the relative path, extracted page JSON, sanitized metadata, page count, and processing state.
+6. If database persistence fails, the promoted file is removed. Deletion first moves the file into a private trash area, commits the database deletion, and then removes the staged file; a failed database deletion restores it.
+
+Image-only PDFs are accepted with `requires_ocr=true` and empty extracted text. OCR is intentionally not implemented or claimed in STEP 04. Blank PDFs without text or images, malformed PDFs, encrypted PDFs, empty uploads, and oversized files are rejected.
+
+Document ownership always comes from the validated JWT. Requests for another user's document receive the same `404` as a missing document, preventing existence disclosure. UUID storage names and root-containment checks prevent path traversal.
 
 ## Database migrations
 

@@ -7,9 +7,9 @@ class UserRole(StrEnum):
 
 
 class DocumentProcessingStatus(StrEnum):
-    PENDING = "pending"
+    UPLOADED = "uploaded"
     PROCESSING = "processing"
-    COMPLETED = "completed"
+    READY = "ready"
     FAILED = "failed"
 
 
