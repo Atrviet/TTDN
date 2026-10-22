@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     jwt_audience: str = "ai-studymate-api"
 
     gemini_api_key: str = ""
+    gemini_chat_model: str = "gemini-2.5-flash-lite"
+    gemini_timeout_seconds: float = Field(default=45.0, gt=0, le=300)
+    gemini_max_retries: int = Field(default=3, ge=1, le=10)
+    gemini_max_output_tokens: int = Field(default=1024, ge=64, le=8192)
     chroma_persist_dir: Path = Path("./chroma_data")
     embedding_provider: Literal["local", "gemini"] = "local"
     local_embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
@@ -44,6 +48,10 @@ class Settings(BaseSettings):
     rag_chunk_overlap: int = Field(default=75, ge=0, le=500)
     rag_collection_prefix: str = Field(default="ai_studymate_chunks_v1", pattern=r"^[a-zA-Z0-9_-]+$")
     rag_max_top_k: int = Field(default=20, ge=1, le=100)
+    chat_rag_top_k: int = Field(default=5, ge=1, le=20)
+    chat_history_messages: int = Field(default=8, ge=0, le=50)
+    chat_history_max_chars: int = Field(default=12000, ge=0, le=100000)
+    chat_context_max_chars: int = Field(default=24000, ge=1000, le=200000)
     document_storage_dir: Path = Path("./document_storage")
     max_pdf_size_mb: int = Field(default=20, gt=0, le=100)
     cors_origins: list[AnyHttpUrl] = [AnyHttpUrl("http://localhost:5173")]

@@ -161,8 +161,12 @@ pytest -m "not integration"
 | `REFRESH_TOKEN_EXPIRE_DAYS` | Refresh-token lifetime in days |
 | `JWT_ISSUER` | Expected JWT issuer claim |
 | `JWT_AUDIENCE` | Expected JWT audience claim |
-| `GEMINI_API_KEY` | Future Gemini credential; empty in STEP 02 |
-| `CHROMA_PERSIST_DIR` | Future local ChromaDB persistence directory |
+| `GEMINI_API_KEY` | Gemini credential for AI chat and optional Gemini embeddings |
+| `GEMINI_CHAT_MODEL` | Gemini generation model available to the configured API project |
+| `GEMINI_TIMEOUT_SECONDS` | Generation request timeout |
+| `GEMINI_MAX_RETRIES` | Bounded attempts for 408, 429, and retryable 5xx responses |
+| `GEMINI_MAX_OUTPUT_TOKENS` | Maximum generated answer tokens |
+| `CHROMA_PERSIST_DIR` | Local ChromaDB persistence directory |
 | `CORS_ORIGINS` | JSON array of allowed browser origins |
 | `DOCUMENT_STORAGE_DIR` | Private local filesystem root for uploaded PDFs |
 | `MAX_PDF_SIZE_MB` | Maximum streamed PDF upload size, default `20` MiB |
@@ -177,6 +181,10 @@ pytest -m "not integration"
 | `RAG_CHUNK_OVERLAP` | Approximate repeated tokens between adjacent chunks; default `75` |
 | `RAG_COLLECTION_PREFIX` | Stable Chroma collection prefix |
 | `RAG_MAX_TOP_K` | Maximum search result count accepted by the API |
+| `CHAT_RAG_TOP_K` | Retrieved chunks considered for one grounded answer |
+| `CHAT_HISTORY_MESSAGES` | Maximum recent messages considered for prompting |
+| `CHAT_HISTORY_MAX_CHARS` | Character budget for conversation history |
+| `CHAT_CONTEXT_MAX_CHARS` | Character budget for retrieved evidence |
 
 ## Authentication
 
@@ -352,3 +360,52 @@ Alembic is configured for the async PostgreSQL URL in `.env`. To inspect SQL wit
 ```bash
 alembic upgrade head --sql
 ```
+
+## Gemini document-grounded chat
+
+STEP 06 adds persistent conversations and Gemini answer generation on top of the STEP 05 retrieval pipeline. Configure a Gemini model that is available to your Google AI project:
+
+```env
+GEMINI_API_KEY=your-key
+GEMINI_CHAT_MODEL=gemini-2.5-flash-lite
+GEMINI_TIMEOUT_SECONDS=45
+GEMINI_MAX_RETRIES=3
+GEMINI_MAX_OUTPUT_TOKENS=1024
+
+CHAT_RAG_TOP_K=5
+CHAT_HISTORY_MESSAGES=8
+CHAT_HISTORY_MAX_CHARS=12000
+CHAT_CONTEXT_MAX_CHARS=24000
+```
+
+Model availability, Free Tier eligibility, rate limits, and pricing depend on the API project and can change. Check Google AI Studio before deployment. A 429 or retryable server error receives bounded exponential retries; exhausted quota, timeouts, and provider errors become HTTP `503`. API keys are never returned or logged.
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/api/v1/chat/sessions` | Create an owned conversation |
+| `GET` | `/api/v1/chat/sessions` | List the current user's conversations |
+| `GET` | `/api/v1/chat/sessions/{session_id}/messages` | Read an owned conversation history |
+| `PATCH` | `/api/v1/chat/sessions/{session_id}` | Rename an owned conversation |
+| `DELETE` | `/api/v1/chat/sessions/{session_id}` | Delete a conversation and its messages |
+| `POST` | `/api/v1/chat/sessions/{session_id}/messages` | Ask Gemini using selected indexed documents |
+
+Create a session and ask a question:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/chat/sessions \
+  -H 'Authorization: Bearer ACCESS_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Ôn tập chương 2"}'
+
+curl -X POST http://127.0.0.1:8000/api/v1/chat/sessions/SESSION_UUID/messages \
+  -H 'Authorization: Bearer ACCESS_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "message":"Tóm tắt chương 2",
+    "document_ids":["DOCUMENT_UUID"]
+  }'
+```
+
+The workflow validates ownership in PostgreSQL, searches only selected indexed documents, applies separate history/evidence budgets, and sends the resulting grounded prompt to Gemini. Retrieved PDF text is wrapped as untrusted `document_text`; the system instruction tells the model not to execute instructions found inside that text. The API builds citations only from retrieved Chroma metadata and never asks the model to invent citation objects.
+
+If retrieval returns no evidence, the service does not call Gemini. It stores a deterministic insufficient-evidence response with an empty citation list. When Gemini fails, neither the user message nor an assistant message is persisted. A successful pair is committed atomically. This does not make an external Gemini call and a PostgreSQL transaction globally atomic; a response may be generated but discarded if the database commit subsequently fails.
