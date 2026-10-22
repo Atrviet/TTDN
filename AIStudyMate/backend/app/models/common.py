@@ -13,6 +13,13 @@ class DocumentProcessingStatus(StrEnum):
     FAILED = "failed"
 
 
+class RAGIndexingStatus(StrEnum):
+    NOT_INDEXED = "not_indexed"
+    INDEXING = "indexing"
+    INDEXED = "indexed"
+    FAILED = "failed"
+
+
 class ChatMessageRole(StrEnum):
     USER = "user"
     ASSISTANT = "assistant"

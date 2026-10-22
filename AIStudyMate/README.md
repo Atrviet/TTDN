@@ -166,6 +166,17 @@ pytest -m "not integration"
 | `CORS_ORIGINS` | JSON array of allowed browser origins |
 | `DOCUMENT_STORAGE_DIR` | Private local filesystem root for uploaded PDFs |
 | `MAX_PDF_SIZE_MB` | Maximum streamed PDF upload size, default `20` MiB |
+| `EMBEDDING_PROVIDER` | `local` or `gemini`; indexing and querying must use the same provider |
+| `LOCAL_EMBEDDING_MODEL` | Sentence Transformers model used by the local provider |
+| `GEMINI_EMBEDDING_MODEL` | Gemini embedding model ID; availability and billing depend on the account |
+| `EMBEDDING_DIMENSIONS` | Optional Gemini output vector dimensions |
+| `EMBEDDING_BATCH_SIZE` | Number of texts sent to the embedding provider per batch |
+| `EMBEDDING_TIMEOUT_SECONDS` | Gemini request timeout |
+| `EMBEDDING_MAX_RETRIES` | Gemini attempts for timeout, 429, and retryable 5xx errors |
+| `RAG_CHUNK_SIZE` | Approximate target tokens per chunk; default `500` |
+| `RAG_CHUNK_OVERLAP` | Approximate repeated tokens between adjacent chunks; default `75` |
+| `RAG_COLLECTION_PREFIX` | Stable Chroma collection prefix |
+| `RAG_MAX_TOP_K` | Maximum search result count accepted by the API |
 
 ## Authentication
 
@@ -255,6 +266,84 @@ curl -X DELETE http://127.0.0.1:8000/api/v1/documents/DOCUMENT_UUID \
 Image-only PDFs are accepted with `requires_ocr=true` and empty extracted text. OCR is intentionally not implemented or claimed in STEP 04. Blank PDFs without text or images, malformed PDFs, encrypted PDFs, empty uploads, and oversized files are rejected.
 
 Document ownership always comes from the validated JWT. Requests for another user's document receive the same `404` as a missing document, preventing existence disclosure. UUID storage names and root-containment checks prevent path traversal.
+
+## RAG indexing and semantic retrieval
+
+STEP 05 indexes extracted PDF text and provides semantic retrieval only. It does not generate an AI answer.
+
+```text
+PostgreSQL extracted_pages
+        │
+        ▼
+Unicode-aware page chunker (about 500 tokens, overlap 75)
+        │
+        ▼
+EmbeddingProvider ── local sentence-transformers / Gemini embedding
+        │
+        ├──► ChromaDB: vector + chunk text + ownership/source metadata
+        │
+        └──► PostgreSQL document_chunks: Chroma ID, page, order, token count
+```
+
+PostgreSQL remains authoritative for users, ownership, document state, indexing state, and chunk references. ChromaDB contains retrieval-oriented vectors and duplicated chunk text/metadata. Every search first verifies ownership and indexing configuration in PostgreSQL, then applies ownership and document filters again in ChromaDB.
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/api/v1/documents/{document_id}/index` | Idempotently chunk, embed, and index an owned PDF |
+| `POST` | `/api/v1/rag/search` | Search indexed chunks from explicitly selected owned documents |
+
+Index a document:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/documents/DOCUMENT_UUID/index \
+  -H 'Authorization: Bearer ACCESS_TOKEN'
+```
+
+Search indexed documents:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/rag/search \
+  -H 'Authorization: Bearer ACCESS_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "query": "Giải thích nội dung chương 1",
+    "document_ids": ["DOCUMENT_UUID"],
+    "top_k": 5
+  }'
+```
+
+Search results use cosine distance: lower values mean greater semantic similarity. Distance is not a probability or confidence percentage.
+
+### Embedding providers
+
+Local development defaults to a multilingual Sentence Transformers model:
+
+```env
+EMBEDDING_PROVIDER=local
+LOCAL_EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+```
+
+The model is downloaded from Hugging Face on first use and then cached locally. For Gemini:
+
+```env
+EMBEDDING_PROVIDER=gemini
+GEMINI_API_KEY=your-key
+GEMINI_EMBEDDING_MODEL=gemini-embedding-001
+EMBEDDING_DIMENSIONS=768
+```
+
+Gemini uses `RETRIEVAL_DOCUMENT` while indexing and `RETRIEVAL_QUERY` while searching. Confirm model availability, pricing, free-tier eligibility, and quota for the configured account before use; the application does not assume an embedding model is free. The implementation uses the official `google-genai` SDK with timeout and retry configuration for 408, 429, and retryable 5xx responses.
+
+Changing the provider or model creates a deterministic new Chroma collection. Existing documents must be reindexed deliberately; the API rejects searching an index built with a different configuration.
+
+### Retrieval evaluation
+
+Automated tests verify chunking, metadata, isolation, idempotency, deterministic nearest-neighbor behavior, and failure cleanup. They do not measure production retrieval quality. Before claiming quality, build a representative Vietnamese evaluation set and report at least:
+
+- Recall@k: whether a known relevant chunk appears in the first `k` results.
+- Mean Reciprocal Rank (MRR): how early the first relevant chunk appears.
+- nDCG@k: ranking quality when relevance has multiple grades.
+- Indexing latency, query latency, and embedding API error/rate-limit rates.
 
 ## Database migrations
 

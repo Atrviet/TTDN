@@ -33,6 +33,17 @@ class Settings(BaseSettings):
 
     gemini_api_key: str = ""
     chroma_persist_dir: Path = Path("./chroma_data")
+    embedding_provider: Literal["local", "gemini"] = "local"
+    local_embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    gemini_embedding_model: str = "gemini-embedding-001"
+    embedding_dimensions: int | None = Field(default=768, gt=0, le=3072)
+    embedding_batch_size: int = Field(default=32, gt=0, le=100)
+    embedding_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
+    embedding_max_retries: int = Field(default=3, ge=1, le=10)
+    rag_chunk_size: int = Field(default=500, ge=50, le=2000)
+    rag_chunk_overlap: int = Field(default=75, ge=0, le=500)
+    rag_collection_prefix: str = Field(default="ai_studymate_chunks_v1", pattern=r"^[a-zA-Z0-9_-]+$")
+    rag_max_top_k: int = Field(default=20, ge=1, le=100)
     document_storage_dir: Path = Path("./document_storage")
     max_pdf_size_mb: int = Field(default=20, gt=0, le=100)
     cors_origins: list[AnyHttpUrl] = [AnyHttpUrl("http://localhost:5173")]
@@ -48,6 +59,10 @@ class Settings(BaseSettings):
             or len(self.jwt_secret_key) < 32
         ):
             raise ValueError("JWT_SECRET_KEY must be a unique secret of at least 32 characters in production")
+        if self.rag_chunk_overlap >= self.rag_chunk_size:
+            raise ValueError("RAG_CHUNK_OVERLAP must be smaller than RAG_CHUNK_SIZE")
+        if self.embedding_provider == "gemini" and not self.gemini_api_key:
+            raise ValueError("GEMINI_API_KEY is required when EMBEDDING_PROVIDER=gemini")
         return self
 
 

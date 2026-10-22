@@ -7,6 +7,7 @@ from app.core.config import get_settings
 from app.services.document import DocumentService
 from app.services.pdf_extractor import PDFExtractor
 from app.services.storage import LocalDocumentStorage
+from app.api.dependencies.rag import VectorStoreDependency
 
 
 def get_document_storage() -> LocalDocumentStorage:
@@ -32,12 +33,14 @@ def get_document_service(
     storage: StorageDependency,
     extractor: ExtractorDependency,
     max_upload_size: MaxPDFSizeDependency,
+    vector_store: VectorStoreDependency,
 ) -> DocumentService:
     return DocumentService(
         session=session,
         storage=storage,
         extractor=extractor,
         max_upload_size=max_upload_size,
+        vector_store=vector_store,
     )
 
 

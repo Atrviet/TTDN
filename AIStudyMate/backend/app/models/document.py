@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
-from app.models.common import DocumentProcessingStatus
+from app.models.common import DocumentProcessingStatus, RAGIndexingStatus
 
 if TYPE_CHECKING:
     from app.models.quiz import Quiz
@@ -51,6 +51,21 @@ class Document(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Boolean, nullable=False, default=False, server_default="false"
     )
     processing_error: Mapped[str | None] = mapped_column(String(500))
+    indexing_status: Mapped[RAGIndexingStatus] = mapped_column(
+        Enum(
+            RAGIndexingStatus,
+            name="rag_indexing_status",
+            values_callable=lambda enum: [item.value for item in enum],
+        ),
+        nullable=False,
+        default=RAGIndexingStatus.NOT_INDEXED,
+        server_default=RAGIndexingStatus.NOT_INDEXED.value,
+        index=True,
+    )
+    indexed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    index_error: Mapped[str | None] = mapped_column(String(500))
+    embedding_provider: Mapped[str | None] = mapped_column(String(32))
+    embedding_model: Mapped[str | None] = mapped_column(String(255))
 
     user: Mapped[User] = relationship(back_populates="documents")
     chunks: Mapped[list[DocumentChunk]] = relationship(

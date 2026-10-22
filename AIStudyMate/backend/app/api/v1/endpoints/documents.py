@@ -5,18 +5,54 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, sta
 
 from app.api.dependencies.auth import CurrentUser
 from app.api.dependencies.document import DocumentServiceDependency
+from app.api.dependencies.rag import RAGServiceDependency
+from app.ai.rag.embeddings.base import EmbeddingError
+from app.ai.rag.service import (
+    DocumentNotIndexableError,
+    IndexConfigurationMismatchError,
+    IndexingInProgressError,
+    RAGDocumentNotFoundError,
+    RAGPersistenceError,
+)
+from app.ai.rag.vector_store import VectorStoreError
 from app.schemas.document import (
     DocumentContentResponse,
     DocumentListResponse,
     DocumentPageContent,
     DocumentResponse,
 )
-from app.services.document import DocumentDatabaseError, DocumentNotFoundError
+from app.schemas.rag import IndexDocumentResponse
+from app.services.document import (
+    DocumentDatabaseError,
+    DocumentNotFoundError,
+    DocumentVectorCleanupError,
+)
 from app.services.pdf_extractor import EmptyPDFError, EncryptedPDFError, InvalidPDFError
 from app.services.storage import EmptyUploadError, FileTooLargeError, StorageError
 
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
+
+
+@router.post("/{document_id}/index", response_model=IndexDocumentResponse)
+async def index_document(
+    document_id: UUID,
+    current_user: CurrentUser,
+    rag_service: RAGServiceDependency,
+) -> IndexDocumentResponse:
+    try:
+        result = await rag_service.index_document(document_id, current_user.id)
+    except RAGDocumentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found") from exc
+    except DocumentNotIndexableError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    except (IndexingInProgressError, IndexConfigurationMismatchError) as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc) or "Indexing conflict") from exc
+    except (EmbeddingError, VectorStoreError) as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Document indexing is temporarily unavailable") from exc
+    except RAGPersistenceError as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Index metadata could not be persisted") from exc
+    return IndexDocumentResponse(**result.__dict__)
 
 
 @router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
@@ -116,3 +152,5 @@ async def delete_document(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Document storage operation failed") from exc
     except DocumentDatabaseError as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Document could not be deleted") from exc
+    except DocumentVectorCleanupError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Document vectors could not be deleted") from exc

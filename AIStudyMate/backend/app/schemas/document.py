@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.common import DocumentProcessingStatus
+from app.models.common import DocumentProcessingStatus, RAGIndexingStatus
 
 
 class DocumentResponse(BaseModel):
@@ -18,6 +18,11 @@ class DocumentResponse(BaseModel):
     page_count: int | None
     requires_ocr: bool
     processing_error: str | None
+    indexing_status: RAGIndexingStatus
+    indexed_at: datetime | None
+    index_error: str | None
+    embedding_provider: str | None
+    embedding_model: str | None
     created_at: datetime
     updated_at: datetime
 

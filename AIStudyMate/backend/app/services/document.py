@@ -2,17 +2,22 @@ from __future__ import annotations
 
 from pathlib import Path
 from uuid import UUID
+from typing import TYPE_CHECKING
 
 from fastapi import UploadFile
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
-from app.models.common import DocumentProcessingStatus
+from app.ai.rag.vector_store import VectorStoreError
+from app.models.common import DocumentProcessingStatus, RAGIndexingStatus
 from app.models.document import Document
 from app.repositories.document import DocumentRepository
 from app.services.pdf_extractor import PDFExtractionResult, PDFExtractor
 from app.services.storage import LocalDocumentStorage
+
+if TYPE_CHECKING:
+    from app.ai.rag.vector_store import ChromaVectorStore
 
 
 class DocumentNotFoundError(Exception):
@@ -23,6 +28,10 @@ class DocumentDatabaseError(Exception):
     """Raised when persistence fails after storage work has started."""
 
 
+class DocumentVectorCleanupError(Exception):
+    """Raised when a deleted document's vectors cannot be removed."""
+
+
 class DocumentService:
     def __init__(
         self,
@@ -30,11 +39,13 @@ class DocumentService:
         storage: LocalDocumentStorage,
         extractor: PDFExtractor,
         max_upload_size: int,
+        vector_store: ChromaVectorStore | None = None,
     ) -> None:
         self.session = session
         self.storage = storage
         self.extractor = extractor
         self.max_upload_size = max_upload_size
+        self.vector_store = vector_store
         self.documents = DocumentRepository(session)
 
     async def upload(
@@ -99,7 +110,13 @@ class DocumentService:
             await self.session.rollback()
             await self.storage.restore_deletion(staged)
             raise DocumentDatabaseError from exc
-        await self.storage.finalize_deletion(staged)
+        try:
+            if self.vector_store is not None and document.indexing_status == RAGIndexingStatus.INDEXED:
+                await self.vector_store.delete_document(document.id, user_id)
+        except VectorStoreError as exc:
+            raise DocumentVectorCleanupError from exc
+        finally:
+            await self.storage.finalize_deletion(staged)
 
     @staticmethod
     def _build_document(
