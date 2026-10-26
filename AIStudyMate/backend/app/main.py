@@ -29,7 +29,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[str(origin) for origin in settings.cors_origins],
+    # Pydantic's AnyHttpUrl string representation includes a trailing slash,
+    # while the browser Origin header never does. Normalize both configured
+    # origins and defaults before passing them to Starlette's exact matcher.
+    allow_origins=[str(origin).rstrip("/") for origin in settings.cors_origins],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

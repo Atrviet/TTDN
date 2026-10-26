@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     jwt_audience: str = "ai-studymate-api"
 
     gemini_api_key: str = ""
-    gemini_chat_model: str = "gemini-2.5-flash-lite"
+    gemini_chat_model: str = "gemini-3.5-flash-lite"
     gemini_timeout_seconds: float = Field(default=45.0, gt=0, le=300)
     gemini_max_retries: int = Field(default=3, ge=1, le=10)
     gemini_max_output_tokens: int = Field(default=1024, ge=64, le=8192)

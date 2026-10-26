@@ -2,6 +2,19 @@
 
 AI StudyMate is an intelligent learning assistant. The current foundation includes FastAPI, versioned API routing, environment-based configuration, structured logging, an async PostgreSQL data model, Alembic migrations, and isolated unit/integration tests.
 
+## Frontend (STEP 10)
+
+The React/Vite frontend lives in `frontend/` and implements the Vietnamese user experience for authentication, documents, PDF upload, RAG chat, Study Agent, quizzes, analytics, and profile viewing. Start it after the API is running:
+
+```bash
+cd frontend
+cp .env.example .env
+npm install
+npm run dev
+```
+
+Open <http://localhost:5173>. Run `npm test` for frontend tests and `npm run build` for production-build verification. Architecture, API integration, and token-storage security notes are documented in [`frontend/README.md`](frontend/README.md).
+
 ## Prerequisites
 
 - Python 3.11 or newer
