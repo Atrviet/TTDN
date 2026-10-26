@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     chat_history_messages: int = Field(default=8, ge=0, le=50)
     chat_history_max_chars: int = Field(default=12000, ge=0, le=100000)
     chat_context_max_chars: int = Field(default=24000, ge=1000, le=200000)
+    agent_max_steps: int = Field(default=8, ge=4, le=50)
+    agent_max_tool_calls: int = Field(default=4, ge=1, le=20)
+    agent_timeout_seconds: float = Field(default=60.0, gt=0, le=300)
+    agent_history_messages: int = Field(default=8, ge=0, le=50)
+    agent_context_max_chars: int = Field(default=30000, ge=1000, le=200000)
     document_storage_dir: Path = Path("./document_storage")
     max_pdf_size_mb: int = Field(default=20, gt=0, le=100)
     cors_origins: list[AnyHttpUrl] = [AnyHttpUrl("http://localhost:5173")]

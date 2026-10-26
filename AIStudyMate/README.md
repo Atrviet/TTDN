@@ -409,3 +409,81 @@ curl -X POST http://127.0.0.1:8000/api/v1/chat/sessions/SESSION_UUID/messages \
 The workflow validates ownership in PostgreSQL, searches only selected indexed documents, applies separate history/evidence budgets, and sends the resulting grounded prompt to Gemini. Retrieved PDF text is wrapped as untrusted `document_text`; the system instruction tells the model not to execute instructions found inside that text. The API builds citations only from retrieved Chroma metadata and never asks the model to invent citation objects.
 
 If retrieval returns no evidence, the service does not call Gemini. It stores a deterministic insufficient-evidence response with an empty citation list. When Gemini fails, neither the user message nor an assistant message is persisted. A successful pair is committed atomically. This does not make an external Gemini call and a PostgreSQL transaction globally atomic; a response may be generated but discarded if the database commit subsequently fails.
+
+## LangGraph AI Study Agent
+
+STEP 07 adds a bounded, stateful Study Agent without introducing a multi-agent architecture. LangGraph orchestrates a typed per-request state, while PostgreSQL `chat_sessions` and `chat_messages` remain the durable conversation memory. The graph state contains user/session IDs, server-authorized document IDs, bounded history, retrieved context, tool-call history, execution status, and step count. It never contains an API key, JWT, or password.
+
+```mermaid
+flowchart LR
+    A[JWT + request] --> B[Validate session and documents]
+    B --> C[Route intent]
+    C --> D[Execute bounded tools]
+    D --> E[Generate grounded answer]
+    E --> F[Validate answer and citations]
+    F --> G[Atomically persist message pair]
+    C -. step/tool limit .-> H[Safe termination]
+    D -. tool failure .-> H
+```
+
+The graph has explicit `route_intent`, `execute_tools`, `generate_answer`, and `validate_response` nodes with conditional termination. `AGENT_MAX_STEPS`, LangGraph's runtime recursion limit, `AGENT_MAX_TOOL_CALLS`, and `AGENT_TIMEOUT_SECONDS` provide separate loop, tool, and wall-clock controls.
+
+### Agent tool contracts
+
+| Tool | Validated input | Structured output | Authorization |
+| --- | --- | --- | --- |
+| `search_documents` | Query, document UUIDs, bounded `top_k` | Matching chunks, distance, title, page, chunk ID | IDs must be in the server-created allowlist; RAG checks PostgreSQL and Chroma ownership again |
+| `get_document_summary` | One document UUID | Extractive summary-source chunks | UUID must be authorized and owned |
+| `get_document_metadata` | One document UUID | Safe title, filename, page and processing/index status | UUID must be authorized and owned |
+| `get_learning_history` | User UUID | Quiz attempts, completion, aggregate accuracy, chat-session count | Supplied UUID must equal the JWT-derived user ID |
+
+Tool selection is deterministic and bounded: questions, explanations, and outlines search documents; summaries retrieve summary-source chunks; learning plans combine retrieval with learning history. Gemini synthesizes the final response but cannot authorize documents, change the trusted user ID, execute arbitrary code, access files, or call unrestricted network tools.
+
+### Agent API
+
+```http
+POST /api/v1/agent/chat
+Authorization: Bearer ACCESS_TOKEN
+Content-Type: application/json
+```
+
+```json
+{
+  "session_id": "SESSION_UUID",
+  "message": "Hãy giải thích chương 1 và lập kế hoạch ôn tập",
+  "document_ids": ["DOCUMENT_UUID"]
+}
+```
+
+Example response:
+
+```json
+{
+  "session_id": "SESSION_UUID",
+  "answer": "...",
+  "tools_used": ["search_documents", "get_learning_history"],
+  "citations": [
+    {
+      "document_id": "DOCUMENT_UUID",
+      "document_title": "Learning material",
+      "page_number": 3,
+      "chunk_id": "DOCUMENT_UUID:2"
+    }
+  ],
+  "execution_steps": 4,
+  "execution_status": "completed",
+  "model": "gemini-2.5-flash-lite"
+}
+```
+
+Agent configuration:
+
+```env
+AGENT_MAX_STEPS=8
+AGENT_MAX_TOOL_CALLS=4
+AGENT_TIMEOUT_SECONDS=60
+AGENT_HISTORY_MESSAGES=8
+AGENT_CONTEXT_MAX_CHARS=30000
+```
+
+PDF text and all tool outputs are wrapped as untrusted data. Citations are assembled only from successful retrieval outputs, never parsed from Gemini text. When all retrieval results are empty or tools fail, the graph returns a controlled insufficient-evidence response without calling Gemini. A timeout returns HTTP `504`; Gemini, embedding, vector-store, and graph execution failures return `503`.

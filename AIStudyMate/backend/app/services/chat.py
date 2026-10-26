@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -122,6 +122,7 @@ class ChatService:
             await self.session.rollback()
             raise ChatSessionNotFoundError
         now = datetime.now(UTC)
+        assistant_time = now + timedelta(microseconds=1)
         user_message = ChatMessage(
             session_id=session_id,
             role=ChatMessageRole.USER,
@@ -134,9 +135,9 @@ class ChatService:
             role=ChatMessageRole.ASSISTANT,
             content=answer,
             citations=citations,
-            created_at=now,
+            created_at=assistant_time,
         )
-        chat_session.updated_at = now
+        chat_session.updated_at = assistant_time
         self.session.add_all([user_message, assistant_message])
         await self._commit()
         return user_message, assistant_message, model_name
