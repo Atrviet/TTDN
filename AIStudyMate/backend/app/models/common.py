@@ -24,3 +24,9 @@ class ChatMessageRole(StrEnum):
     USER = "user"
     ASSISTANT = "assistant"
 
+
+class QuizDifficulty(StrEnum):
+    EASY = "easy"
+    MEDIUM = "medium"
+    HARD = "hard"
+

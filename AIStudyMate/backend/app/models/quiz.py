@@ -4,10 +4,12 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Enum, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.common import QuizDifficulty
 
 if TYPE_CHECKING:
     from app.models.document import Document
@@ -26,6 +28,16 @@ class Quiz(UUIDPrimaryKeyMixin, Base):
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
+    difficulty: Mapped[QuizDifficulty] = mapped_column(
+        Enum(
+            QuizDifficulty,
+            name="quiz_difficulty",
+            values_callable=lambda enum: [item.value for item in enum],
+        ),
+        nullable=False,
+        default=QuizDifficulty.MEDIUM,
+        server_default=QuizDifficulty.MEDIUM.value,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -53,6 +65,7 @@ class Question(UUIDPrimaryKeyMixin, Base):
     )
     question_text: Mapped[str] = mapped_column(Text, nullable=False)
     explanation: Mapped[str | None] = mapped_column(Text)
+    source_references: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB)
     question_order: Mapped[int] = mapped_column(Integer, nullable=False)
 
     quiz: Mapped[Quiz] = relationship(back_populates="questions")

@@ -1,7 +1,8 @@
 from google import genai
 from google.genai import errors, types
+from pydantic import ValidationError
 
-from app.ai.llm.base import LLMError, LLMProvider
+from app.ai.llm.base import LLMError, LLMProvider, StructuredModel
 
 
 class GeminiLLMProvider(LLMProvider):
@@ -59,3 +60,39 @@ class GeminiLLMProvider(LLMProvider):
             raise LLMError("Gemini generation request failed") from exc
         except Exception as exc:
             raise LLMError("Gemini generation request failed") from exc
+
+    async def generate_structured(
+        self,
+        *,
+        system_instruction: str,
+        prompt: str,
+        response_model: type[StructuredModel],
+        max_output_tokens: int | None = None,
+    ) -> StructuredModel:
+        if not self.api_key:
+            raise LLMError("Gemini API key is not configured")
+        try:
+            if self.client is None:
+                self.client = genai.Client(api_key=self.api_key, http_options=self.http_options)
+            response = await self.client.aio.models.generate_content(
+                model=self._model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    temperature=0.2,
+                    max_output_tokens=max_output_tokens or self.max_output_tokens,
+                    response_mime_type="application/json",
+                    response_schema=response_model,
+                ),
+            )
+            if isinstance(response.parsed, response_model):
+                return response.parsed
+            if not response.text:
+                raise LLMError("Gemini returned an empty structured response")
+            return response_model.model_validate_json(response.text)
+        except (LLMError, ValidationError):
+            raise
+        except (errors.APIError, TimeoutError, OSError) as exc:
+            raise LLMError("Gemini structured generation request failed") from exc
+        except Exception as exc:
+            raise LLMError("Gemini structured generation request failed") from exc

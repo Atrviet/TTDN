@@ -487,3 +487,83 @@ AGENT_CONTEXT_MAX_CHARS=30000
 ```
 
 PDF text and all tool outputs are wrapped as untrusted data. Citations are assembled only from successful retrieval outputs, never parsed from Gemini text. When all retrieval results are empty or tools fail, the graph returns a controlled insufficient-evidence response without calling Gemini. A timeout returns HTTP `504`; Gemini, embedding, vector-store, and graph execution failures return `503`.
+
+## AI Quiz Generator
+
+STEP 08 generates document-grounded multiple-choice quizzes with Gemini structured output and grades attempts deterministically in PostgreSQL.
+
+```text
+Owned indexed document
+        │
+        ▼
+RAG retrieves authorized source chunks
+        │
+        ▼
+Gemini + Pydantic GeneratedQuiz schema
+        │
+        ├── exactly four unique options
+        ├── exactly one correct option
+        ├── explanation
+        └── validated source chunk IDs
+        │
+        ▼
+PostgreSQL Quiz → Questions → AnswerOptions
+        │
+        ▼
+QuizAttempt → deterministic grading → UserAnswers
+```
+
+The API never returns `is_correct`, the correct option ID, or explanations before submission. Correctness is read exclusively from PostgreSQL during grading; the client cannot submit or influence a correctness value.
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/api/v1/quizzes/generate` | Generate and persist a quiz from one owned indexed document |
+| `GET` | `/api/v1/quizzes` | List the current user's quizzes |
+| `GET` | `/api/v1/quizzes/{quiz_id}` | Read a quiz without answers |
+| `POST` | `/api/v1/quizzes/{quiz_id}/attempts` | Start a new owned attempt |
+| `POST` | `/api/v1/quizzes/attempts/{attempt_id}/submit` | Submit every answer once and grade atomically |
+| `GET` | `/api/v1/quizzes/attempts/{attempt_id}/results` | Read results only after completion |
+
+Generate a quiz:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/quizzes/generate \
+  -H 'Authorization: Bearer ACCESS_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "title":"Ôn tập RAG",
+    "number_of_questions":5,
+    "difficulty":"medium",
+    "document_id":"DOCUMENT_UUID"
+  }'
+```
+
+Start and submit an attempt:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/quizzes/QUIZ_UUID/attempts \
+  -H 'Authorization: Bearer ACCESS_TOKEN'
+
+curl -X POST http://127.0.0.1:8000/api/v1/quizzes/attempts/ATTEMPT_UUID/submit \
+  -H 'Authorization: Bearer ACCESS_TOKEN' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "answers":[
+      {"question_id":"QUESTION_UUID","selected_option_id":"OPTION_UUID"}
+    ]
+  }'
+```
+
+Configuration:
+
+```env
+QUIZ_MIN_QUESTIONS=1
+QUIZ_MAX_QUESTIONS=10
+QUIZ_CONTEXT_TOP_K=12
+QUIZ_CONTEXT_MAX_CHARS=40000
+QUIZ_MAX_OUTPUT_TOKENS=4096
+```
+
+Gemini receives untrusted evidence boundaries and a Pydantic response schema. The service rejects the response if it has the wrong question count, duplicate questions/options, anything other than one correct answer, missing explanations, or source chunk IDs that were not retrieved. Schema-valid output is still treated as untrusted until these semantic checks pass.
+
+PostgreSQL stores quiz difficulty and question source references in migration `20261026_0004`. Submission locks the attempt row, verifies that every question is answered exactly once, verifies that each selected option belongs to its question, stores per-question correctness, computes the score, and sets `completed_at` in one transaction. A completed attempt cannot be submitted again.

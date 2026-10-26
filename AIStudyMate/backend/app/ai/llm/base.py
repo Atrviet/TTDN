@@ -1,4 +1,10 @@
 from abc import ABC, abstractmethod
+from typing import TypeVar
+
+from pydantic import BaseModel
+
+
+StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
 
 
 class LLMError(Exception):
@@ -14,3 +20,13 @@ class LLMProvider(ABC):
     @abstractmethod
     async def generate(self, *, system_instruction: str, prompt: str) -> str:
         raise NotImplementedError
+
+    async def generate_structured(
+        self,
+        *,
+        system_instruction: str,
+        prompt: str,
+        response_model: type[StructuredModel],
+        max_output_tokens: int | None = None,
+    ) -> StructuredModel:
+        raise LLMError("Structured output is not supported by this provider")

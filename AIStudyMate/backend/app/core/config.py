@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     agent_timeout_seconds: float = Field(default=60.0, gt=0, le=300)
     agent_history_messages: int = Field(default=8, ge=0, le=50)
     agent_context_max_chars: int = Field(default=30000, ge=1000, le=200000)
+    quiz_min_questions: int = Field(default=1, ge=1, le=20)
+    quiz_max_questions: int = Field(default=10, ge=1, le=20)
+    quiz_context_top_k: int = Field(default=12, ge=1, le=20)
+    quiz_context_max_chars: int = Field(default=40000, ge=1000, le=200000)
+    quiz_max_output_tokens: int = Field(default=4096, ge=512, le=8192)
     document_storage_dir: Path = Path("./document_storage")
     max_pdf_size_mb: int = Field(default=20, gt=0, le=100)
     cors_origins: list[AnyHttpUrl] = [AnyHttpUrl("http://localhost:5173")]
@@ -76,6 +81,8 @@ class Settings(BaseSettings):
             raise ValueError("RAG_CHUNK_OVERLAP must be smaller than RAG_CHUNK_SIZE")
         if self.embedding_provider == "gemini" and not self.gemini_api_key:
             raise ValueError("GEMINI_API_KEY is required when EMBEDDING_PROVIDER=gemini")
+        if self.quiz_min_questions > self.quiz_max_questions:
+            raise ValueError("QUIZ_MIN_QUESTIONS must not exceed QUIZ_MAX_QUESTIONS")
         return self
 
 

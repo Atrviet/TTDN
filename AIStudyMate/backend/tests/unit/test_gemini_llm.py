@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import pytest
+from pydantic import BaseModel
 
 from app.ai.llm.base import LLMError
 from app.ai.llm.gemini import GeminiLLMProvider
@@ -17,6 +18,10 @@ class FakeModels:
         if self.error:
             raise self.error
         return self.response
+
+
+class StructuredResponse(BaseModel):
+    value: str
 
 
 def provider() -> GeminiLLMProvider:
@@ -65,3 +70,25 @@ async def test_gemini_generation_requires_api_key_only_when_called() -> None:
     )
     with pytest.raises(LLMError, match="not configured"):
         await llm.generate(system_instruction="system", prompt="prompt")
+
+
+@pytest.mark.asyncio
+async def test_gemini_structured_generation_validates_pydantic_output() -> None:
+    llm = provider()
+    models = FakeModels(
+        response=SimpleNamespace(parsed=StructuredResponse(value="valid"), text=None)
+    )
+    llm.client = SimpleNamespace(aio=SimpleNamespace(models=models))
+
+    result = await llm.generate_structured(
+        system_instruction="system",
+        prompt="prompt",
+        response_model=StructuredResponse,
+        max_output_tokens=512,
+    )
+
+    assert result.value == "valid"
+    config = models.kwargs["config"]
+    assert config.response_mime_type == "application/json"
+    assert config.response_schema == StructuredResponse
+    assert config.max_output_tokens == 512
