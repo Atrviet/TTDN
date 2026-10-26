@@ -567,3 +567,46 @@ QUIZ_MAX_OUTPUT_TOKENS=4096
 Gemini receives untrusted evidence boundaries and a Pydantic response schema. The service rejects the response if it has the wrong question count, duplicate questions/options, anything other than one correct answer, missing explanations, or source chunk IDs that were not retrieved. Schema-valid output is still treated as untrusted until these semantic checks pass.
 
 PostgreSQL stores quiz difficulty and question source references in migration `20261026_0004`. Submission locks the attempt row, verifies that every question is answered exactly once, verifies that each selected option belongs to its question, stores per-question correctness, computes the score, and sets `completed_at` in one transaction. A completed attempt cannot be submitted again.
+
+## Learning Analytics
+
+STEP 09 calculates chart-ready learning analytics directly from completed PostgreSQL quiz attempts. It does not call an LLM, create synthetic activity, or cache derived scores. Attempts with `completed_at IS NULL` are excluded from every metric.
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/api/v1/analytics/overview` | Overall metrics, latest results, and accuracy grouped by quiz |
+| `GET` | `/api/v1/analytics/progress` | Daily UTC progress points |
+| `GET` | `/api/v1/analytics/quiz-history` | Paginated completed-attempt history |
+| `GET` | `/api/v1/analytics/weak-topics` | Quizzes with at least one incorrect answer |
+
+Every endpoint accepts optional inclusive UTC query parameters:
+
+```text
+date_from=2026-10-01&date_to=2026-10-31
+```
+
+Quiz history additionally accepts `page` and `per_page`; overview accepts `latest_limit` from 1 to 20.
+
+Examples:
+
+```bash
+curl 'http://127.0.0.1:8000/api/v1/analytics/overview?date_from=2026-10-01&date_to=2026-10-31' \
+  -H 'Authorization: Bearer ACCESS_TOKEN'
+
+curl 'http://127.0.0.1:8000/api/v1/analytics/quiz-history?page=1&per_page=20' \
+  -H 'Authorization: Bearer ACCESS_TOKEN'
+```
+
+Metric formulas:
+
+- `total_quizzes_attempted`: count of completed `quiz_attempts` in the selected range. Repeated attempts count separately.
+- Attempt percentage: `score / total_questions × 100`.
+- `average_score_percentage`: arithmetic mean of attempt percentages, so each attempt has equal weight.
+- `highest_score_percentage`: maximum completed-attempt percentage.
+- Accuracy by quiz: `SUM(score) / SUM(total_questions) × 100`, weighted by answered question count.
+- Daily progress: completed attempts grouped by the UTC date of `completed_at`; average is the arithmetic mean of that day's attempt percentages.
+- Weak-topic accuracy: correct persisted `user_answers / total persisted user_answers × 100`.
+
+The current schema does not have a curriculum topic taxonomy. Therefore weak topics use the real `quiz.title` as `topic` and explicitly return `topic_basis: "quiz_title"`. Only quizzes with at least one persisted incorrect answer are returned. This is a factual weak-area signal, not an AI inference about conceptual mastery.
+
+Users with no completed attempts receive zero counts, `null` average/highest percentages, and empty chart arrays. All SQL statements include the JWT-derived `QuizAttempt.user_id`; client-supplied user IDs are not accepted. Migration `20261026_0005` adds `(user_id, completed_at)` to support filtering and ordering analytics queries efficiently.

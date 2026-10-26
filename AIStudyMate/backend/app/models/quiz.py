@@ -107,6 +107,7 @@ class QuizAttempt(UUIDPrimaryKeyMixin, Base):
             name="ck_quiz_attempts_completion_after_start",
         ),
         Index("ix_quiz_attempts_user_started_at", "user_id", "started_at"),
+        Index("ix_quiz_attempts_user_completed_at", "user_id", "completed_at"),
     )
 
     quiz_id: Mapped[UUID] = mapped_column(
