@@ -1,3 +1,5 @@
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -18,6 +20,16 @@ class ChatSessionNotFoundError(Exception):
 
 class ChatPersistenceError(Exception):
     """Raised when a chat database transaction cannot be completed."""
+
+
+@dataclass(frozen=True)
+class PreparedChatResponse:
+    session_id: UUID
+    user_id: UUID
+    message: str
+    prompt: str
+    citations: list[dict[str, str | int]]
+    has_evidence: bool
 
 
 class ChatService:
@@ -82,6 +94,32 @@ class ChatService:
         message: str,
         document_ids: list[UUID],
     ) -> tuple[ChatMessage, ChatMessage, str | None]:
+        prepared = await self.prepare_message(
+            session_id=session_id,
+            user_id=user_id,
+            message=message,
+            document_ids=document_ids,
+        )
+        if prepared.has_evidence:
+            answer = await self.llm_provider.generate(
+                system_instruction=SYSTEM_INSTRUCTION,
+                prompt=prepared.prompt,
+            )
+            model_name: str | None = self.llm_provider.model_name
+        else:
+            answer = self.NO_EVIDENCE_ANSWER
+            model_name = None
+        user_message, assistant_message = await self.persist_response(prepared, answer)
+        return user_message, assistant_message, model_name
+
+    async def prepare_message(
+        self,
+        *,
+        session_id: UUID,
+        user_id: UUID,
+        message: str,
+        document_ids: list[UUID],
+    ) -> PreparedChatResponse:
         await self._require_owned_session(session_id, user_id)
         history = await self.repository.recent_messages(session_id, self.history_messages)
         results = await self.rag_service.search(
@@ -107,40 +145,54 @@ class ChatService:
             }
             for result in prompt_context.included_results
         ]
-        if prompt_context.included_results:
-            answer = await self.llm_provider.generate(
-                system_instruction=SYSTEM_INSTRUCTION,
-                prompt=prompt_context.prompt,
-            )
-            model_name: str | None = self.llm_provider.model_name
-        else:
-            answer = self.NO_EVIDENCE_ANSWER
-            model_name = None
+        return PreparedChatResponse(
+            session_id=session_id,
+            user_id=user_id,
+            message=message.strip(),
+            prompt=prompt_context.prompt,
+            citations=citations,
+            has_evidence=bool(prompt_context.included_results),
+        )
 
-        chat_session = await self.repository.get_owned_session_for_update(session_id, user_id)
+    async def stream_response(self, prepared: PreparedChatResponse) -> AsyncIterator[str]:
+        if not prepared.has_evidence:
+            yield self.NO_EVIDENCE_ANSWER
+            return
+        async for fragment in self.llm_provider.stream(
+            system_instruction=SYSTEM_INSTRUCTION,
+            prompt=prepared.prompt,
+        ):
+            yield fragment
+
+    async def persist_response(
+        self, prepared: PreparedChatResponse, answer: str
+    ) -> tuple[ChatMessage, ChatMessage]:
+        chat_session = await self.repository.get_owned_session_for_update(
+            prepared.session_id, prepared.user_id
+        )
         if chat_session is None:
             await self.session.rollback()
             raise ChatSessionNotFoundError
         now = datetime.now(UTC)
         assistant_time = now + timedelta(microseconds=1)
         user_message = ChatMessage(
-            session_id=session_id,
+            session_id=prepared.session_id,
             role=ChatMessageRole.USER,
-            content=message.strip(),
+            content=prepared.message,
             citations=None,
             created_at=now,
         )
         assistant_message = ChatMessage(
-            session_id=session_id,
+            session_id=prepared.session_id,
             role=ChatMessageRole.ASSISTANT,
             content=answer,
-            citations=citations,
+            citations=prepared.citations,
             created_at=assistant_time,
         )
         chat_session.updated_at = assistant_time
         self.session.add_all([user_message, assistant_message])
         await self._commit()
-        return user_message, assistant_message, model_name
+        return user_message, assistant_message
 
     async def _require_owned_session(self, session_id: UUID, user_id: UUID) -> ChatSession:
         chat_session = await self.repository.get_owned_session(session_id, user_id)

@@ -14,6 +14,8 @@ let refreshPromise: Promise<string> | null = null;
 let onSessionExpired: (() => void) | null = null;
 const REFRESH_KEY = "ai_studymate_refresh";
 
+class PublicApiError extends Error {}
+
 export const tokenStore = {
   getAccess: () => accessToken,
   getRefresh: () => sessionStorage.getItem(REFRESH_KEY),
@@ -64,6 +66,7 @@ export function apiError(error: unknown): string {
     if (Array.isArray(detail)) return detail.map((item) => item.msg).join(", ");
     if (error.code === "ECONNABORTED") return "Yêu cầu đã hết thời gian chờ.";
   }
+  if (error instanceof PublicApiError) return error.message;
   return "Đã có lỗi xảy ra. Vui lòng thử lại.";
 }
 
@@ -98,6 +101,70 @@ export const chatApi = {
   create: async (title: string) => (await http.post<ChatSession>("/chat/sessions", { title })).data,
   history: async (id: string) => (await http.get<ChatHistory>(`/chat/sessions/${id}/messages`)).data,
   send: async (id: string, message: string, document_ids: string[]) => (await http.post<SendMessageResponse>(`/chat/sessions/${id}/messages`, { message, document_ids })).data,
+  async stream(
+    id: string,
+    message: string,
+    document_ids: string[],
+    handlers: {
+      onToken: (text: string) => void;
+      onCitations: (citations: import("../types/api").Citation[]) => void;
+      onComplete: (response: SendMessageResponse) => void;
+    },
+    signal: AbortSignal,
+  ) {
+    const request = async (token: string | null) => fetch(`${baseURL}/chat/sessions/${id}/messages/stream`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ message, document_ids }),
+      signal,
+    });
+    let response = await request(tokenStore.getAccess());
+    if (response.status === 401 && tokenStore.getRefresh()) {
+      try {
+        refreshPromise ??= refreshAccessToken().finally(() => { refreshPromise = null; });
+        response = await request(await refreshPromise);
+      } catch (error) {
+        tokenStore.clear(); onSessionExpired?.(); throw error;
+      }
+    }
+    if (!response.ok) {
+      const body = await response.json().catch(() => null) as { detail?: string } | null;
+      throw new PublicApiError(body?.detail ?? `HTTP ${response.status}`);
+    }
+    if (!response.body) throw new PublicApiError("Trình duyệt không hỗ trợ streaming response.");
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    const dispatch = (block: string) => {
+      let event = "message"; const data: string[] = [];
+      for (const line of block.split("\n")) {
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        if (line.startsWith("data:")) data.push(line.slice(5).trimStart());
+      }
+      if (!data.length) return;
+      const payload = JSON.parse(data.join("\n"));
+      if (event === "token") handlers.onToken(payload.text);
+      else if (event === "citations") handlers.onCitations(payload.citations);
+      else if (event === "complete") handlers.onComplete(payload);
+      else if (event === "error") throw new PublicApiError(payload.message);
+    };
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done }).replace(/\r\n/g, "\n");
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary >= 0) {
+        dispatch(buffer.slice(0, boundary));
+        buffer = buffer.slice(boundary + 2);
+        boundary = buffer.indexOf("\n\n");
+      }
+      if (done) break;
+    }
+    if (buffer.trim()) dispatch(buffer);
+  },
 };
 
 export const agentApi = {

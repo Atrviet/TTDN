@@ -1,6 +1,6 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, Plus, Send, User } from "lucide-react";
+import { Bot, Plus, Send, Square, User } from "lucide-react";
 import { agentApi, apiError, chatApi, documentsApi } from "../lib/api";
 import type { Citation, ChatMessage } from "../types/api";
 import { Badge, buttonClass, cardClass, EmptyState, ErrorState, inputClass, Loading, PageHeader } from "../components/ui";
@@ -16,13 +16,33 @@ function Bubble({ message }: { message: ChatMessage }) { const mine = message.ro
 
 export function ChatPage() {
   const client = useQueryClient(); const [sessionId, setSessionId] = useState(""); const [selected, setSelected] = useState<string[]>([]); const [message, setMessage] = useState(""); const [error, setError] = useState("");
+  const [streaming, setStreaming] = useState(false); const [streamedAnswer, setStreamedAnswer] = useState(""); const [streamedCitations, setStreamedCitations] = useState<Citation[]>([]); const controller = useRef<AbortController | null>(null);
   const sessions = useQuery({ queryKey: ["chat-sessions"], queryFn: chatApi.sessions });
   useEffect(() => { if (!sessionId && sessions.data?.[0]) setSessionId(sessions.data[0].id); }, [sessions.data, sessionId]);
   const history = useQuery({ queryKey: ["chat-history", sessionId], queryFn: () => chatApi.history(sessionId), enabled: !!sessionId });
   const create = useMutation({ mutationFn: () => chatApi.create("Cuộc trò chuyện mới"), onSuccess: (item) => { setSessionId(item.id); void client.invalidateQueries({ queryKey: ["chat-sessions"] }); } });
-  const send = useMutation({ mutationFn: () => chatApi.send(sessionId, message, selected), onSuccess: () => { setMessage(""); void history.refetch(); }, onError: (e) => setError(apiError(e)) });
-  const submit = (e: FormEvent) => { e.preventDefault(); setError(""); if (!sessionId) return setError("Hãy tạo phiên chat."); if (!message.trim() || selected.length === 0) return setError("Nhập câu hỏi và chọn ít nhất một tài liệu."); send.mutate(); };
-  return <><PageHeader eyebrow="Grounded conversation" title="AI Chat" description="Đặt câu hỏi và nhận câu trả lời có trích dẫn từ tài liệu của bạn." /><div className="grid min-h-[70vh] gap-5 lg:grid-cols-[260px_1fr]"><aside className={`${cardClass} h-fit`}><button onClick={() => create.mutate()} className={`${buttonClass} w-full`}><Plus className="h-4 w-4" />Phiên mới</button><div className="mt-4 space-y-1">{sessions.data?.map((item) => <button key={item.id} onClick={() => setSessionId(item.id)} className={`w-full truncate rounded-xl px-3 py-2 text-left text-sm ${sessionId === item.id ? "bg-blue-50 font-bold text-ocean" : "hover:bg-slate-50"}`}>{item.title}</button>)}</div></aside><section className="flex min-h-[650px] flex-col rounded-2xl border border-slate-200 bg-slate-50/70 shadow-card"><div className="flex-1 space-y-5 overflow-y-auto p-5">{history.isLoading ? <Loading /> : !sessionId || history.data?.items.length === 0 ? <EmptyState title="Bắt đầu cuộc trò chuyện" description="Chọn tài liệu và hỏi điều bạn muốn hiểu sâu hơn." /> : history.data?.items.map((item) => <Bubble key={item.id} message={item} />)}{send.isPending && <p className="text-sm text-slate-500">AI đang đọc tài liệu...</p>}</div><form onSubmit={submit} className="space-y-3 border-t border-slate-200 bg-white p-4"><DocumentPicker selected={selected} setSelected={setSelected} />{error && <p role="alert" className="text-sm text-red-600">{error}</p>}<div className="flex gap-2"><textarea aria-label="Câu hỏi" rows={2} className={inputClass} placeholder="Ví dụ: Giải thích nội dung chương 1..." value={message} onChange={(e) => setMessage(e.target.value)} /><button aria-label="Gửi" disabled={send.isPending} className={`${buttonClass} self-end px-3`}><Send /></button></div></form></section></div></>;
+  useEffect(() => () => controller.current?.abort(), []);
+  const cancel = () => { controller.current?.abort(); controller.current = null; setStreaming(false); setError("Đã hủy phản hồi."); };
+  const submit = async (e: FormEvent) => {
+    e.preventDefault(); setError("");
+    if (!sessionId) return setError("Hãy tạo phiên chat.");
+    if (!message.trim() || selected.length === 0) return setError("Nhập câu hỏi và chọn ít nhất một tài liệu.");
+    const abort = new AbortController(); controller.current = abort; setStreaming(true); setStreamedAnswer(""); setStreamedCitations([]);
+    try {
+      await chatApi.stream(sessionId, message, selected, {
+        onToken: (text) => setStreamedAnswer((current) => current + text),
+        onCitations: setStreamedCitations,
+        onComplete: () => undefined,
+      }, abort.signal);
+      setMessage(""); setStreamedAnswer(""); setStreamedCitations([]); await history.refetch();
+    } catch (streamError) {
+      if (!abort.signal.aborted) setError(apiError(streamError));
+    } finally {
+      if (controller.current === abort) controller.current = null;
+      setStreaming(false);
+    }
+  };
+  return <><PageHeader eyebrow="Grounded conversation" title="AI Chat" description="Đặt câu hỏi và nhận câu trả lời có trích dẫn từ tài liệu của bạn." /><div className="grid min-h-[70vh] gap-5 lg:grid-cols-[260px_1fr]"><aside className={`${cardClass} h-fit`}><button onClick={() => create.mutate()} className={`${buttonClass} w-full`}><Plus className="h-4 w-4" />Phiên mới</button><div className="mt-4 space-y-1">{sessions.data?.map((item) => <button key={item.id} disabled={streaming} onClick={() => setSessionId(item.id)} className={`w-full truncate rounded-xl px-3 py-2 text-left text-sm ${sessionId === item.id ? "bg-blue-50 font-bold text-ocean" : "hover:bg-slate-50"}`}>{item.title}</button>)}</div></aside><section className="flex min-h-[650px] flex-col rounded-2xl border border-slate-200 bg-slate-50/70 shadow-card"><div aria-live="polite" className="flex-1 space-y-5 overflow-y-auto p-5">{history.isLoading ? <Loading /> : !sessionId || history.data?.items.length === 0 ? <EmptyState title="Bắt đầu cuộc trò chuyện" description="Chọn tài liệu và hỏi điều bạn muốn hiểu sâu hơn." /> : history.data?.items.map((item) => <Bubble key={item.id} message={item} />)}{streaming && <div className="flex gap-3"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-ink text-white"><Bot className="h-4 w-4" /></span><div className="max-w-[85%] rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700"><p className="whitespace-pre-wrap">{streamedAnswer || "AI đang đọc tài liệu..."}<span className="ml-1 inline-block h-4 w-1 animate-pulse bg-ocean" /></p><Citations items={streamedCitations} /></div></div>}</div><form onSubmit={submit} className="space-y-3 border-t border-slate-200 bg-white p-4"><DocumentPicker selected={selected} setSelected={setSelected} />{error && <p role="alert" className="text-sm text-red-600">{error}</p>}<div className="flex gap-2"><textarea aria-label="Câu hỏi" rows={2} disabled={streaming} className={inputClass} placeholder="Ví dụ: Giải thích nội dung chương 1..." value={message} onChange={(e) => setMessage(e.target.value)} />{streaming ? <button type="button" aria-label="Hủy phản hồi" onClick={cancel} className={`${buttonClass} self-end bg-red-600 px-3 hover:bg-red-700`}><Square className="h-5 w-5" /></button> : <button aria-label="Gửi" className={`${buttonClass} self-end px-3`}><Send /></button>}</div></form></section></div></>;
 }
 
 export function AgentPage() {

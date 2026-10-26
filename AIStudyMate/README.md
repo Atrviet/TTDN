@@ -15,6 +15,10 @@ npm run dev
 
 Open <http://localhost:5173>. Run `npm test` for frontend tests and `npm run build` for production-build verification. Architecture, API integration, and token-storage security notes are documented in [`frontend/README.md`](frontend/README.md).
 
+## Realtime AI Chat and system verification (STEP 11)
+
+Document-grounded chat supports authenticated SSE streaming over `POST`, incremental rendering, cancellation, citations, safe error events, and an atomic final persistence step. Tokens are sent only in the Authorization header, never in a URL. See [`docs/step11-system-testing.md`](docs/step11-system-testing.md) for the event contract, complete test matrix, measured local performance and limitations.
+
 ## Prerequisites
 
 - Python 3.11 or newer

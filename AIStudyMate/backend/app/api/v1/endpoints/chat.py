@@ -1,6 +1,10 @@
+import asyncio
+import json
+from collections.abc import AsyncIterator
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi.responses import StreamingResponse
 
 from app.ai.llm.base import LLMError
 from app.ai.rag.embeddings.base import EmbeddingError
@@ -26,6 +30,10 @@ from app.services.chat import ChatPersistenceError, ChatSessionNotFoundError
 
 
 router = APIRouter(prefix="/chat/sessions", tags=["Chat"])
+
+
+def _sse(event: str, data: dict[str, object]) -> bytes:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False, default=str)}\n\n".encode()
 
 
 @router.post("", response_model=ChatSessionResponse, status_code=status.HTTP_201_CREATED)
@@ -126,4 +134,77 @@ async def send_chat_message(
         user_message=ChatMessageResponse.model_validate(user_message),
         assistant_message=ChatMessageResponse.model_validate(assistant_message),
         model=model,
+    )
+
+
+@router.post(
+    "/{session_id}/messages/stream",
+    response_class=StreamingResponse,
+    responses={200: {"content": {"text/event-stream": {}}}},
+)
+async def stream_chat_message(
+    session_id: UUID,
+    payload: SendChatMessageRequest,
+    request: Request,
+    current_user: CurrentUser,
+    service: ChatServiceDependency,
+) -> StreamingResponse:
+    """Stream a grounded answer. Authentication stays in the Bearer header."""
+    try:
+        prepared = await service.prepare_message(
+            session_id=session_id,
+            user_id=current_user.id,
+            message=payload.message,
+            document_ids=payload.document_ids,
+        )
+    except ChatSessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Chat session not found") from exc
+    except RAGDocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Document not found") from exc
+    except (DocumentNotIndexableError, IndexConfigurationMismatchError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc) or "Document index is not compatible") from exc
+    except (EmbeddingError, VectorStoreError) as exc:
+        raise HTTPException(status_code=503, detail="Semantic retrieval is temporarily unavailable") from exc
+
+    async def events() -> AsyncIterator[bytes]:
+        fragments: list[str] = []
+        answer_stream = service.stream_response(prepared)
+        try:
+            yield _sse("citations", {"citations": prepared.citations})
+            async for fragment in answer_stream:
+                if await request.is_disconnected():
+                    return
+                fragments.append(fragment)
+                yield _sse("token", {"text": fragment})
+            if await request.is_disconnected():
+                return
+            answer = "".join(fragments).strip()
+            if not answer:
+                raise LLMError("AI returned an empty response")
+            user_message, assistant_message = await service.persist_response(prepared, answer)
+            yield _sse(
+                "complete",
+                {
+                    "session_id": str(prepared.session_id),
+                    "model": service.llm_provider.model_name if prepared.has_evidence else None,
+                    "user_message": ChatMessageResponse.model_validate(user_message).model_dump(mode="json"),
+                    "assistant_message": ChatMessageResponse.model_validate(assistant_message).model_dump(mode="json"),
+                },
+            )
+        except asyncio.CancelledError:
+            await service.session.rollback()
+            raise
+        except (LLMError, ChatPersistenceError):
+            await service.session.rollback()
+            yield _sse("error", {"message": "AI chat is temporarily unavailable"})
+        finally:
+            await answer_stream.aclose()
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        },
     )

@@ -19,6 +19,30 @@ class FakeModels:
             raise self.error
         return self.response
 
+    async def generate_content_stream(self, **kwargs):
+        self.kwargs = kwargs
+        if self.error:
+            raise self.error
+        return self.response
+
+
+class FakeStream:
+    def __init__(self, parts: list[str]) -> None:
+        self.parts = iter(parts)
+        self.closed = False
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        try:
+            return SimpleNamespace(text=next(self.parts))
+        except StopIteration as exc:
+            raise StopAsyncIteration from exc
+
+    async def aclose(self) -> None:
+        self.closed = True
+
 
 class StructuredResponse(BaseModel):
     value: str
@@ -92,3 +116,17 @@ async def test_gemini_structured_generation_validates_pydantic_output() -> None:
     assert config.response_mime_type == "application/json"
     assert config.response_schema == StructuredResponse
     assert config.max_output_tokens == 512
+
+
+@pytest.mark.asyncio
+async def test_gemini_stream_yields_fragments_and_closes_transport() -> None:
+    llm = provider()
+    stream = FakeStream(["Xin ", "chào"])
+    models = FakeModels(response=stream)
+    llm.client = SimpleNamespace(aio=SimpleNamespace(models=models))
+
+    fragments = [item async for item in llm.stream(system_instruction="system", prompt="prompt")]
+
+    assert fragments == ["Xin ", "chào"]
+    assert stream.closed is True
+    assert models.kwargs["model"] == "test-model"

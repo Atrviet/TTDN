@@ -1,6 +1,6 @@
 import type { AxiosResponse } from "axios";
-import { beforeEach, describe, expect, it } from "vitest";
-import { apiError, authApi, http, tokenStore } from "../lib/api";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { apiError, authApi, chatApi, http, tokenStore } from "../lib/api";
 
 describe("typed API client", () => {
   beforeEach(() => { tokenStore.clear(); });
@@ -32,5 +32,36 @@ describe("typed API client", () => {
 
   it("returns a safe Vietnamese fallback for unknown errors", () => {
     expect(apiError(new Error("internal secret"))).toBe("Đã có lỗi xảy ra. Vui lòng thử lại.");
+  });
+
+  it("parses authenticated SSE tokens, citations and completion", async () => {
+    tokenStore.set({ access_token: "access-stream", refresh_token: "refresh", token_type: "bearer" });
+    const encoder = new TextEncoder();
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode('event: citations\ndata: {"citations":[{"document_id":"d","document_title":"Doc","page_number":1,"chunk_id":"c"}]}\n\n'));
+        controller.enqueue(encoder.encode('event: token\ndata: {"text":"Xin "}\n\nevent: token\ndata: {"text":"chào"}\n\n'));
+        controller.enqueue(encoder.encode('event: complete\ndata: {"session_id":"s","user_message":{},"assistant_message":{},"model":"mock"}\n\n'));
+        controller.close();
+      },
+    });
+    let authorization = ""; let observedSignal: AbortSignal | undefined;
+    vi.stubGlobal("fetch", vi.fn(async (_url, init) => {
+      authorization = String((init?.headers as Record<string, string>).Authorization);
+      observedSignal = init?.signal ?? undefined;
+      return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+    }));
+    const abort = new AbortController(); const tokens: string[] = []; let citationCount = 0; let completed = false;
+    await chatApi.stream("s", "question", ["d"], {
+      onToken: (text) => tokens.push(text),
+      onCitations: (items) => { citationCount = items.length; },
+      onComplete: () => { completed = true; },
+    }, abort.signal);
+    expect(authorization).toBe("Bearer access-stream");
+    expect(observedSignal).toBe(abort.signal);
+    expect(tokens.join("")).toBe("Xin chào");
+    expect(citationCount).toBe(1);
+    expect(completed).toBe(true);
+    vi.unstubAllGlobals();
   });
 });

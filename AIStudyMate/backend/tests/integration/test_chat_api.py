@@ -1,4 +1,5 @@
 import os
+from collections.abc import AsyncIterator
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -41,6 +42,13 @@ class FakeLLM(LLMProvider):
             raise LLMError("simulated failure")
         self.prompts.append(prompt)
         return "Câu trả lời dựa trên tài liệu [SOURCE 1]."
+
+    async def stream(self, *, system_instruction: str, prompt: str) -> AsyncIterator[str]:
+        if self.should_fail:
+            raise LLMError("simulated rate limit")
+        self.prompts.append(prompt)
+        yield "Câu trả lời "
+        yield "được truyền dần [SOURCE 1]."
 
 
 def safe_test_database_url() -> str:
@@ -116,6 +124,17 @@ async def test_chat_lifecycle_grounding_isolation_no_evidence_and_failure() -> N
                 f"/api/v1/chat/sessions/{session_id}/messages", headers=other_headers
             )
             assert isolated.status_code == 404
+            unauthenticated_stream = await client.post(
+                f"/api/v1/chat/sessions/{session_id}/messages/stream",
+                json={"message": "Không có token", "document_ids": [str(document_id)]},
+            )
+            assert unauthenticated_stream.status_code == 401
+            isolated_stream = await client.post(
+                f"/api/v1/chat/sessions/{session_id}/messages/stream",
+                headers=other_headers,
+                json={"message": "Không thuộc phiên", "document_ids": [str(document_id)]},
+            )
+            assert isolated_stream.status_code == 404
 
             sent = await client.post(
                 f"/api/v1/chat/sessions/{session_id}/messages",
@@ -134,10 +153,24 @@ async def test_chat_lifecycle_grounding_isolation_no_evidence_and_failure() -> N
                 }
             ]
 
+            streamed = await client.post(
+                f"/api/v1/chat/sessions/{session_id}/messages/stream",
+                headers=owner_headers,
+                json={"message": "Stream chương 2", "document_ids": [str(document_id)]},
+            )
+            assert streamed.status_code == 200
+            assert streamed.headers["content-type"].startswith("text/event-stream")
+            assert "event: citations" in streamed.text
+            assert streamed.text.count("event: token") == 2
+            assert "event: complete" in streamed.text
+            assert "được truyền dần" in streamed.text
+
             history = await client.get(
                 f"/api/v1/chat/sessions/{session_id}/messages", headers=owner_headers
             )
-            assert [item["role"] for item in history.json()["items"]] == ["user", "assistant"]
+            assert [item["role"] for item in history.json()["items"]] == [
+                "user", "assistant", "user", "assistant"
+            ]
 
             rag.results = []
             no_evidence = await client.post(
@@ -172,6 +205,19 @@ async def test_chat_lifecycle_grounding_isolation_no_evidence_and_failure() -> N
                 f"/api/v1/chat/sessions/{session_id}/messages", headers=owner_headers
             )).json()["items"])
             assert after_failure == before_failure
+
+            failed_stream = await client.post(
+                f"/api/v1/chat/sessions/{session_id}/messages/stream",
+                headers=owner_headers,
+                json={"message": "Rate limited stream", "document_ids": [str(document_id)]},
+            )
+            assert failed_stream.status_code == 200
+            assert "event: error" in failed_stream.text
+            assert "temporarily unavailable" in failed_stream.text
+            after_stream_failure = len((await client.get(
+                f"/api/v1/chat/sessions/{session_id}/messages", headers=owner_headers
+            )).json()["items"])
+            assert after_stream_failure == after_failure
 
             renamed = await client.patch(
                 f"/api/v1/chat/sessions/{session_id}",

@@ -1,3 +1,5 @@
+from collections.abc import AsyncIterator
+
 from google import genai
 from google.genai import errors, types
 from pydantic import ValidationError
@@ -96,3 +98,38 @@ class GeminiLLMProvider(LLMProvider):
             raise LLMError("Gemini structured generation request failed") from exc
         except Exception as exc:
             raise LLMError("Gemini structured generation request failed") from exc
+
+    async def stream(self, *, system_instruction: str, prompt: str) -> AsyncIterator[str]:
+        if not self.api_key:
+            raise LLMError("Gemini API key is not configured")
+        stream = None
+        try:
+            if self.client is None:
+                self.client = genai.Client(api_key=self.api_key, http_options=self.http_options)
+            stream = await self.client.aio.models.generate_content_stream(
+                model=self._model_name,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    temperature=0.2,
+                    max_output_tokens=self.max_output_tokens,
+                ),
+            )
+            emitted = False
+            async for response in stream:
+                text = response.text or ""
+                if text:
+                    emitted = True
+                    yield text
+            if not emitted:
+                raise LLMError("Gemini returned an empty response")
+        except LLMError:
+            raise
+        except (errors.APIError, TimeoutError, OSError) as exc:
+            raise LLMError("Gemini streaming request failed") from exc
+        except Exception as exc:
+            raise LLMError("Gemini streaming request failed") from exc
+        finally:
+            close = getattr(stream, "aclose", None)
+            if close is not None:
+                await close()
