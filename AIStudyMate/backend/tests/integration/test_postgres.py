@@ -25,6 +25,7 @@ EXPECTED_TABLES = {
     "flashcards",
     "flashcard_reviews",
     "flashcard_deck_documents",
+    "study_plan_documents",
     "study_plans",
     "study_tasks",
     "study_availability",
@@ -96,7 +97,7 @@ async def test_migration_upgrade_downgrade_and_foreign_keys() -> None:
             )
             version = await connection.scalar(text("SELECT version_num FROM alembic_version"))
         assert EXPECTED_TABLES <= tables
-        assert version == "20261031_0007"
+        assert version == "20261031_0008"
         assert foreign_keys[0]["options"]["ondelete"] == "CASCADE"
     finally:
         await engine.dispose()

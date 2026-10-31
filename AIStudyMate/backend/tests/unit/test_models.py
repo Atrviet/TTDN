@@ -32,6 +32,7 @@ EXPECTED_TABLES = {
     "flashcards",
     "flashcard_reviews",
     "flashcard_deck_documents",
+    "study_plan_documents",
     "study_plans",
     "study_tasks",
     "study_availability",
@@ -55,7 +56,7 @@ def test_all_expected_models_are_registered() -> None:
     assert all(
         table.primary_key.columns.keys() == ["id"]
         for name, table in Base.metadata.tables.items()
-        if name not in {"tutor_session_documents", "flashcard_deck_documents"}
+        if name not in {"tutor_session_documents", "flashcard_deck_documents", "study_plan_documents"}
     )
     assert list(Base.metadata.tables["tutor_session_documents"].primary_key.columns.keys()) == [
         "session_id",
@@ -65,6 +66,7 @@ def test_all_expected_models_are_registered() -> None:
         "deck_id",
         "document_id",
     ]
+    assert list(Base.metadata.tables["study_plan_documents"].primary_key.columns.keys()) == ["plan_id", "document_id"]
 
 
 def test_mappers_and_required_relationships_are_configured() -> None:
@@ -112,7 +114,7 @@ def test_mappers_and_required_relationships_are_configured() -> None:
         "deck", "source_document", "source_chunk", "reviews"
     }
     assert {relationship.key for relationship in StudyPlan.__mapper__.relationships} == {
-        "user", "tasks", "availability"
+        "user", "tasks", "availability", "documents"
     }
     assert {relationship.key for relationship in TutorSession.__mapper__.relationships} == {
         "user", "documents", "messages"
@@ -174,6 +176,7 @@ def test_foreign_key_delete_behaviors_are_explicit() -> None:
         "flashcards": {"CASCADE", "SET NULL"},
         "flashcard_reviews": {"CASCADE"},
         "flashcard_deck_documents": {"CASCADE"},
+        "study_plan_documents": {"CASCADE"},
         "study_plans": {"CASCADE"},
         "study_tasks": {"CASCADE", "SET NULL"},
         "study_availability": {"CASCADE"},

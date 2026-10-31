@@ -50,6 +50,7 @@ class StudyTaskStatus(StrEnum):
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     SKIPPED = "skipped"
+    POSTPONED = "postponed"
 
 
 class RecommendationStatus(StrEnum):

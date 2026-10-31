@@ -68,6 +68,10 @@ class Settings(BaseSettings):
     flashcard_context_top_k: int = Field(default=20, ge=1, le=50)
     flashcard_context_max_chars: int = Field(default=50000, ge=1000, le=200000)
     flashcard_max_output_tokens: int = Field(default=6144, ge=512, le=8192)
+    planner_max_steps: int = Field(default=10, ge=7, le=30)
+    planner_max_retries: int = Field(default=1, ge=0, le=3)
+    planner_timeout_seconds: float = Field(default=90, gt=0, le=300)
+    planner_context_top_k: int = Field(default=12, ge=1, le=20)
     document_storage_dir: Path = Path("./document_storage")
     max_pdf_size_mb: int = Field(default=20, gt=0, le=100)
     cors_origins: list[AnyHttpUrl] = [AnyHttpUrl("http://localhost:5173")]

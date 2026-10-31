@@ -5,6 +5,7 @@ import type {
   QuizSummary, SendMessageResponse, TokenPair, User, WeakTopicsResponse,
   DueFlashcards, FlashcardDeck, FlashcardDeckSummary, FlashcardRating, FlashcardReview,
   FlashcardStats,
+  StudyPlan, StudyPlanSummary, StudyTask, StudyTaskStatus,
 } from "../types/api";
 
 const baseURL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
@@ -198,4 +199,13 @@ export const flashcardsApi = {
   update: async (id: string, input: { front_text?: string; back_text?: string; explanation?: string | null }) => (await http.patch<import("../types/api").Flashcard>(`/flashcards/${id}`, input)).data,
   remove: async (id: string) => { await http.delete(`/flashcards/${id}`); },
   review: async (id: string, rating: FlashcardRating) => (await http.post<FlashcardReview>(`/flashcards/${id}/review`, { rating })).data,
+};
+
+export const studyPlansApi = {
+  list: async () => (await http.get<{ items: StudyPlanSummary[] }>("/study-plans")).data.items,
+  get: async (id: string) => (await http.get<StudyPlan>(`/study-plans/${id}`)).data,
+  generate: async (input: { goal: string; subject: string; exam_date: string; available_days: number[]; daily_available_minutes: number; preferred_session_minutes: number; difficulty: string; document_ids: string[]; timezone: string }) => (await http.post<StudyPlan>("/study-plans/generate", input)).data,
+  updateTask: async (id: string, input: { status: StudyTaskStatus; actual_duration_minutes?: number; planned_start_at?: string }) => (await http.patch<StudyTask>(`/study-tasks/${id}`, input)).data,
+  replan: async (id: string) => (await http.post<StudyPlan>(`/study-plans/${id}/replan`, {})).data,
+  remove: async (id: string) => { await http.delete(`/study-plans/${id}`); },
 };

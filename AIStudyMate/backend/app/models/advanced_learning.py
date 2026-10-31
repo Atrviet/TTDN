@@ -33,6 +33,7 @@ from app.models.common import (
     RecommendationStatus,
     StudyPlanStatus,
     StudyTaskStatus,
+    QuizDifficulty,
 )
 
 if TYPE_CHECKING:
@@ -75,6 +76,15 @@ flashcard_deck_documents = Table(
         primary_key=True,
     ),
     Index("ix_flashcard_deck_documents_document_id", "document_id"),
+)
+
+
+study_plan_documents = Table(
+    "study_plan_documents",
+    Base.metadata,
+    Column("plan_id", PostgreSQLUUID(as_uuid=True), ForeignKey("study_plans.id", ondelete="CASCADE"), primary_key=True),
+    Column("document_id", PostgreSQLUUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True),
+    Index("ix_study_plan_documents_document_id", "document_id"),
 )
 
 
@@ -169,6 +179,8 @@ class StudyPlan(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "study_plans"
     __table_args__ = (
         CheckConstraint("end_date >= start_date", name="ck_study_plans_date_order"),
+        CheckConstraint("daily_available_minutes > 0", name="ck_study_plans_daily_minutes_positive"),
+        CheckConstraint("preferred_session_minutes > 0", name="ck_study_plans_session_minutes_positive"),
         Index("ix_study_plans_user_status", "user_id", "status"),
     )
 
@@ -177,6 +189,14 @@ class StudyPlan(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     goal: Mapped[str | None] = mapped_column(Text)
+    subject: Mapped[str] = mapped_column(String(255), nullable=False, server_default="General")
+    difficulty: Mapped[QuizDifficulty] = mapped_column(
+        Enum(QuizDifficulty, name="quiz_difficulty", values_callable=lambda enum: [item.value for item in enum], create_type=False),
+        nullable=False, default=QuizDifficulty.MEDIUM, server_default=QuizDifficulty.MEDIUM.value,
+    )
+    daily_available_minutes: Mapped[int] = mapped_column(Integer, nullable=False, server_default="60")
+    preferred_session_minutes: Mapped[int] = mapped_column(Integer, nullable=False, server_default="30")
+    available_days: Mapped[list[int]] = mapped_column(JSONB, nullable=False, server_default="[0,1,2,3,4]")
     status: Mapped[StudyPlanStatus] = mapped_column(
         Enum(
             StudyPlanStatus,
@@ -198,6 +218,7 @@ class StudyPlan(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     availability: Mapped[list[StudyAvailability]] = relationship(
         back_populates="plan", cascade="all, delete-orphan", passive_deletes=True
     )
+    documents: Mapped[list[Document]] = relationship(secondary=study_plan_documents)
 
 
 class StudyTask(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -209,6 +230,8 @@ class StudyTask(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             name="ck_study_tasks_completion_requires_completed_status",
         ),
         Index("ix_study_tasks_plan_status_due", "plan_id", "status", "due_at"),
+        CheckConstraint("actual_duration_minutes IS NULL OR actual_duration_minutes >= 0", name="ck_study_tasks_actual_duration_non_negative"),
+        CheckConstraint("priority BETWEEN 1 AND 5", name="ck_study_tasks_priority_range"),
     )
 
     plan_id: Mapped[UUID] = mapped_column(
@@ -219,6 +242,9 @@ class StudyTask(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
+    topic: Mapped[str] = mapped_column(String(255), nullable=False, server_default="General")
+    task_type: Mapped[str] = mapped_column(String(32), nullable=False, server_default="study")
+    priority: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="3")
     status: Mapped[StudyTaskStatus] = mapped_column(
         Enum(
             StudyTaskStatus,
@@ -232,6 +258,7 @@ class StudyTask(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     planned_start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     planned_duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    actual_duration_minutes: Mapped[int | None] = mapped_column(Integer)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     plan: Mapped[StudyPlan] = relationship(back_populates="tasks")

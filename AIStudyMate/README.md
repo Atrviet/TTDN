@@ -44,6 +44,9 @@ documented in [`docs/step13-advanced-learning-foundation.md`](docs/step13-advanc
 AI flashcard generation, SM-2 scheduling, API contracts, and the React review
 workflow are documented in [`docs/step14-flashcards.md`](docs/step14-flashcards.md).
 
+The LangGraph study planner, deterministic scheduling rules, API, and calendar
+UI are documented in [`docs/step15-study-planner.md`](docs/step15-study-planner.md).
+
 ## Frontend (STEP 10)
 
 The React/Vite frontend lives in `frontend/` and implements the Vietnamese user experience for authentication, documents, PDF upload, RAG chat, Study Agent, quizzes, analytics, and profile viewing. Start it after the API is running:
