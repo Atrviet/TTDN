@@ -31,6 +31,7 @@ EXPECTED_TABLES = {
     "flashcard_decks",
     "flashcards",
     "flashcard_reviews",
+    "flashcard_deck_documents",
     "study_plans",
     "study_tasks",
     "study_availability",
@@ -54,10 +55,14 @@ def test_all_expected_models_are_registered() -> None:
     assert all(
         table.primary_key.columns.keys() == ["id"]
         for name, table in Base.metadata.tables.items()
-        if name != "tutor_session_documents"
+        if name not in {"tutor_session_documents", "flashcard_deck_documents"}
     )
     assert list(Base.metadata.tables["tutor_session_documents"].primary_key.columns.keys()) == [
         "session_id",
+        "document_id",
+    ]
+    assert list(Base.metadata.tables["flashcard_deck_documents"].primary_key.columns.keys()) == [
+        "deck_id",
         "document_id",
     ]
 
@@ -101,7 +106,7 @@ def test_mappers_and_required_relationships_are_configured() -> None:
         "user_answers",
     }
     assert {relationship.key for relationship in FlashcardDeck.__mapper__.relationships} == {
-        "user", "document", "flashcards"
+        "user", "document", "documents", "flashcards"
     }
     assert {relationship.key for relationship in Flashcard.__mapper__.relationships} == {
         "deck", "source_document", "source_chunk", "reviews"
@@ -168,6 +173,7 @@ def test_foreign_key_delete_behaviors_are_explicit() -> None:
         "flashcard_decks": {"CASCADE", "SET NULL"},
         "flashcards": {"CASCADE", "SET NULL"},
         "flashcard_reviews": {"CASCADE"},
+        "flashcard_deck_documents": {"CASCADE"},
         "study_plans": {"CASCADE"},
         "study_tasks": {"CASCADE", "SET NULL"},
         "study_availability": {"CASCADE"},

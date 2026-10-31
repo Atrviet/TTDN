@@ -3,6 +3,8 @@ import type {
   AgentResponse, AnalyticsOverview, ChatHistory, ChatSession, DocumentContent,
   DocumentItem, DocumentList, ProgressResponse, QuizAttempt, QuizDetail, QuizResult,
   QuizSummary, SendMessageResponse, TokenPair, User, WeakTopicsResponse,
+  DueFlashcards, FlashcardDeck, FlashcardDeckSummary, FlashcardRating, FlashcardReview,
+  FlashcardStats,
 } from "../types/api";
 
 const baseURL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
@@ -184,4 +186,16 @@ export const analyticsApi = {
   overview: async () => (await http.get<AnalyticsOverview>("/analytics/overview")).data,
   progress: async () => (await http.get<ProgressResponse>("/analytics/progress")).data,
   weakTopics: async () => (await http.get<WeakTopicsResponse>("/analytics/weak-topics")).data,
+};
+
+export const flashcardsApi = {
+  decks: async () => (await http.get<{ items: FlashcardDeckSummary[] }>("/flashcards/decks")).data.items,
+  deck: async (id: string) => (await http.get<FlashcardDeck>(`/flashcards/decks/${id}`)).data,
+  create: async (input: { title: string; description?: string; cards?: { front_text: string; back_text: string; explanation?: string }[] }) => (await http.post<FlashcardDeck>("/flashcards/decks", input)).data,
+  generate: async (input: { document_ids: string[]; topic: string; card_count: number; difficulty: string; title?: string }) => (await http.post<FlashcardDeck>("/flashcards/generate", input)).data,
+  due: async (deckId?: string) => (await http.get<DueFlashcards>("/flashcards/due", { params: deckId ? { deck_id: deckId } : undefined })).data,
+  stats: async () => (await http.get<FlashcardStats>("/flashcards/stats")).data,
+  update: async (id: string, input: { front_text?: string; back_text?: string; explanation?: string | null }) => (await http.patch<import("../types/api").Flashcard>(`/flashcards/${id}`, input)).data,
+  remove: async (id: string) => { await http.delete(`/flashcards/${id}`); },
+  review: async (id: string, rating: FlashcardRating) => (await http.post<FlashcardReview>(`/flashcards/${id}/review`, { rating })).data,
 };

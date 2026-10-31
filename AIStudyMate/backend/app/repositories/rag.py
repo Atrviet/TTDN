@@ -33,6 +33,17 @@ class RAGRepository:
         )
         return count or 0
 
+    async def get_chunks_by_chroma_ids(self, chroma_ids: list[str]) -> list[DocumentChunk]:
+        if not chroma_ids:
+            return []
+        return list(
+            (
+                await self.session.scalars(
+                    select(DocumentChunk).where(DocumentChunk.chroma_id.in_(chroma_ids))
+                )
+            ).all()
+        )
+
     async def replace_chunks(self, document_id: UUID, chunks: list[DocumentChunk]) -> None:
         await self.session.execute(
             delete(DocumentChunk).where(DocumentChunk.document_id == document_id)

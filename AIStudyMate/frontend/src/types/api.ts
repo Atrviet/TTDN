@@ -40,3 +40,12 @@ export interface ProgressPoint { date: string; attempts: number; average_score_p
 export interface ProgressResponse { granularity: "day"; points: ProgressPoint[] }
 export interface WeakTopic { quiz_id: UUID; topic: string; attempts: number; incorrect_answers: number; total_answers: number; accuracy_percentage: number }
 export interface WeakTopicsResponse { topic_basis: "quiz_title"; items: WeakTopic[] }
+
+export type FlashcardRating = "again" | "hard" | "good" | "easy";
+export interface FlashcardSource { document_id: UUID; document_title: string; page_number: number | null; chunk_id: string | null }
+export interface Flashcard { id: UUID; deck_id: UUID; front_text: string; back_text: string; explanation: string | null; card_order: number; source: FlashcardSource | null; created_at: string; updated_at: string }
+export interface FlashcardDeckSummary { id: UUID; title: string; description: string | null; card_count: number; due_count: number; document_ids: UUID[]; created_at: string; updated_at: string }
+export interface FlashcardDeck extends FlashcardDeckSummary { cards: Flashcard[] }
+export interface DueFlashcards { items: Flashcard[]; total: number }
+export interface FlashcardReview { id: UUID; flashcard_id: UUID; rating: FlashcardRating; reviewed_at: string; next_review_at: string; repetition_count: number; ease_factor: number; interval_days: number }
+export interface FlashcardStats { total_decks: number; total_cards: number; due_cards: number; reviewed_cards: number; total_reviews: number; rating_counts: { rating: FlashcardRating; count: number }[] }

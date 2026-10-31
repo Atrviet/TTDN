@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     quiz_context_top_k: int = Field(default=12, ge=1, le=20)
     quiz_context_max_chars: int = Field(default=40000, ge=1000, le=200000)
     quiz_max_output_tokens: int = Field(default=4096, ge=512, le=8192)
+    flashcard_min_cards: int = Field(default=1, ge=1, le=50)
+    flashcard_max_cards: int = Field(default=30, ge=1, le=50)
+    flashcard_context_top_k: int = Field(default=20, ge=1, le=50)
+    flashcard_context_max_chars: int = Field(default=50000, ge=1000, le=200000)
+    flashcard_max_output_tokens: int = Field(default=6144, ge=512, le=8192)
     document_storage_dir: Path = Path("./document_storage")
     max_pdf_size_mb: int = Field(default=20, gt=0, le=100)
     cors_origins: list[AnyHttpUrl] = [AnyHttpUrl("http://localhost:5173")]
@@ -85,6 +90,8 @@ class Settings(BaseSettings):
             raise ValueError("GEMINI_API_KEY is required when EMBEDDING_PROVIDER=gemini")
         if self.quiz_min_questions > self.quiz_max_questions:
             raise ValueError("QUIZ_MIN_QUESTIONS must not exceed QUIZ_MAX_QUESTIONS")
+        if self.flashcard_min_cards > self.flashcard_max_cards:
+            raise ValueError("FLASHCARD_MIN_CARDS must not exceed FLASHCARD_MAX_CARDS")
         return self
 
 

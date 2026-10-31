@@ -59,6 +59,25 @@ tutor_session_documents = Table(
 )
 
 
+flashcard_deck_documents = Table(
+    "flashcard_deck_documents",
+    Base.metadata,
+    Column(
+        "deck_id",
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("flashcard_decks.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "document_id",
+        PostgreSQLUUID(as_uuid=True),
+        ForeignKey("documents.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Index("ix_flashcard_deck_documents_document_id", "document_id"),
+)
+
+
 class FlashcardDeck(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "flashcard_decks"
     __table_args__ = (Index("ix_flashcard_decks_user_updated_at", "user_id", "updated_at"),)
@@ -74,6 +93,7 @@ class FlashcardDeck(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     user: Mapped[User] = relationship(back_populates="flashcard_decks")
     document: Mapped[Document | None] = relationship()
+    documents: Mapped[list[Document]] = relationship(secondary=flashcard_deck_documents)
     flashcards: Mapped[list[Flashcard]] = relationship(
         back_populates="deck", cascade="all, delete-orphan", passive_deletes=True
     )

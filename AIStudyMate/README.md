@@ -41,6 +41,9 @@ For deployment, operations, backup and restore, see [`docs/deployment.md`](docs/
 The database and shared-service foundation for the advanced learning modules is
 documented in [`docs/step13-advanced-learning-foundation.md`](docs/step13-advanced-learning-foundation.md).
 
+AI flashcard generation, SM-2 scheduling, API contracts, and the React review
+workflow are documented in [`docs/step14-flashcards.md`](docs/step14-flashcards.md).
+
 ## Frontend (STEP 10)
 
 The React/Vite frontend lives in `frontend/` and implements the Vietnamese user experience for authentication, documents, PDF upload, RAG chat, Study Agent, quizzes, analytics, and profile viewing. Start it after the API is running:
