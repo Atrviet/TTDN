@@ -30,3 +30,31 @@ class QuizDifficulty(StrEnum):
     MEDIUM = "medium"
     HARD = "hard"
 
+
+class FlashcardReviewRating(StrEnum):
+    AGAIN = "again"
+    HARD = "hard"
+    GOOD = "good"
+    EASY = "easy"
+
+
+class StudyPlanStatus(StrEnum):
+    DRAFT = "draft"
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    ARCHIVED = "archived"
+
+
+class StudyTaskStatus(StrEnum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    SKIPPED = "skipped"
+
+
+class RecommendationStatus(StrEnum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    DISMISSED = "dismissed"
+    COMPLETED = "completed"
+

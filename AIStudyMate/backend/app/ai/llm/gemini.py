@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 
 from google import genai
@@ -5,6 +6,10 @@ from google.genai import errors, types
 from pydantic import ValidationError
 
 from app.ai.llm.base import LLMError, LLMProvider, StructuredModel
+from app.ai.structured import provider_compatible_json_schema
+
+
+_gemini_compatible_schema = provider_compatible_json_schema
 
 
 class GeminiLLMProvider(LLMProvider):
@@ -16,10 +21,12 @@ class GeminiLLMProvider(LLMProvider):
         timeout_seconds: float,
         max_retries: int,
         max_output_tokens: int,
+        max_concurrent_requests: int = 4,
     ) -> None:
         self.api_key = api_key
         self._model_name = model_name
         self.max_output_tokens = max_output_tokens
+        self._request_slots = asyncio.Semaphore(max_concurrent_requests)
         self.http_options = types.HttpOptions(
                 timeout=int(timeout_seconds * 1000),
                 retry_options=types.HttpRetryOptions(
@@ -40,6 +47,7 @@ class GeminiLLMProvider(LLMProvider):
     async def generate(self, *, system_instruction: str, prompt: str) -> str:
         if not self.api_key:
             raise LLMError("Gemini API key is not configured")
+        await self._request_slots.acquire()
         try:
             if self.client is None:
                 self.client = genai.Client(api_key=self.api_key, http_options=self.http_options)
@@ -62,6 +70,8 @@ class GeminiLLMProvider(LLMProvider):
             raise LLMError("Gemini generation request failed") from exc
         except Exception as exc:
             raise LLMError("Gemini generation request failed") from exc
+        finally:
+            self._request_slots.release()
 
     async def generate_structured(
         self,
@@ -73,6 +83,7 @@ class GeminiLLMProvider(LLMProvider):
     ) -> StructuredModel:
         if not self.api_key:
             raise LLMError("Gemini API key is not configured")
+        await self._request_slots.acquire()
         try:
             if self.client is None:
                 self.client = genai.Client(api_key=self.api_key, http_options=self.http_options)
@@ -84,7 +95,7 @@ class GeminiLLMProvider(LLMProvider):
                     temperature=0.2,
                     max_output_tokens=max_output_tokens or self.max_output_tokens,
                     response_mime_type="application/json",
-                    response_schema=response_model,
+                    response_schema=_gemini_compatible_schema(response_model.model_json_schema()),
                 ),
             )
             if isinstance(response.parsed, response_model):
@@ -98,11 +109,14 @@ class GeminiLLMProvider(LLMProvider):
             raise LLMError("Gemini structured generation request failed") from exc
         except Exception as exc:
             raise LLMError("Gemini structured generation request failed") from exc
+        finally:
+            self._request_slots.release()
 
     async def stream(self, *, system_instruction: str, prompt: str) -> AsyncIterator[str]:
         if not self.api_key:
             raise LLMError("Gemini API key is not configured")
         stream = None
+        await self._request_slots.acquire()
         try:
             if self.client is None:
                 self.client = genai.Client(api_key=self.api_key, http_options=self.http_options)
@@ -130,6 +144,9 @@ class GeminiLLMProvider(LLMProvider):
         except Exception as exc:
             raise LLMError("Gemini streaming request failed") from exc
         finally:
-            close = getattr(stream, "aclose", None)
-            if close is not None:
-                await close()
+            try:
+                close = getattr(stream, "aclose", None)
+                if close is not None:
+                    await close()
+            finally:
+                self._request_slots.release()

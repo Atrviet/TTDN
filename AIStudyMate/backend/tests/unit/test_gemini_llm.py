@@ -4,7 +4,7 @@ import pytest
 from pydantic import BaseModel
 
 from app.ai.llm.base import LLMError
-from app.ai.llm.gemini import GeminiLLMProvider
+from app.ai.llm.gemini import GeminiLLMProvider, _gemini_compatible_schema
 
 
 class FakeModels:
@@ -114,7 +114,9 @@ async def test_gemini_structured_generation_validates_pydantic_output() -> None:
     assert result.value == "valid"
     config = models.kwargs["config"]
     assert config.response_mime_type == "application/json"
-    assert config.response_schema == StructuredResponse
+    assert config.response_schema == _gemini_compatible_schema(
+        StructuredResponse.model_json_schema()
+    )
     assert config.max_output_tokens == 512
 
 

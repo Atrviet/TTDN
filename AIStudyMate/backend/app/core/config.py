@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     gemini_timeout_seconds: float = Field(default=45.0, gt=0, le=300)
     gemini_max_retries: int = Field(default=3, ge=1, le=10)
     gemini_max_output_tokens: int = Field(default=1024, ge=64, le=8192)
+    gemini_max_concurrent_requests: int = Field(default=4, ge=1, le=50)
     chroma_persist_dir: Path = Path("./chroma_data")
     embedding_provider: Literal["local", "gemini"] = "local"
     local_embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
@@ -74,6 +75,7 @@ class Settings(BaseSettings):
     def validate_production_secrets(self) -> "Settings":
         if self.app_env == "production" and (
             self.jwt_secret_key == "replace-with-a-long-random-secret"
+            or self.jwt_secret_key.lower().startswith("change-me")
             or len(self.jwt_secret_key) < 32
         ):
             raise ValueError("JWT_SECRET_KEY must be a unique secret of at least 32 characters in production")

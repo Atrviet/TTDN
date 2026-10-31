@@ -1,22 +1,100 @@
+name: ai-studymate
+
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: ai_studymate_postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-ai_studymate}
       POSTGRES_USER: ${POSTGRES_USER:-ai_studymate}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ai_studymate_dev_password}
-    ports:
-      - "${POSTGRES_PORT:-5433}:5432"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env file}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks: [backend_net]
+    logging:
+      options: {max-size: "10m", max-file: "3"}
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    environment:
+      APP_NAME: ${APP_NAME:-AI StudyMate}
+      APP_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-ai_studymate}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ai_studymate}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set a random JWT_SECRET_KEY of at least 32 characters}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      JWT_ISSUER: ${JWT_ISSUER:-ai-studymate}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-ai-studymate-api}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_CHAT_MODEL: ${GEMINI_CHAT_MODEL:-gemini-3.5-flash-lite}
+      GEMINI_TIMEOUT_SECONDS: ${GEMINI_TIMEOUT_SECONDS:-45}
+      GEMINI_MAX_RETRIES: ${GEMINI_MAX_RETRIES:-3}
+      GEMINI_MAX_OUTPUT_TOKENS: ${GEMINI_MAX_OUTPUT_TOKENS:-1024}
+      GEMINI_MAX_CONCURRENT_REQUESTS: ${GEMINI_MAX_CONCURRENT_REQUESTS:-4}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-local}
+      LOCAL_EMBEDDING_MODEL: ${LOCAL_EMBEDDING_MODEL:-sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2}
+      CHROMA_PERSIST_DIR: /data/chroma
+      DOCUMENT_STORAGE_DIR: /data/documents
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:8080"]}
+      MAX_PDF_SIZE_MB: ${MAX_PDF_SIZE_MB:-20}
+    volumes:
+      - document_data:/data/documents
+      - chroma_data:/data/chroma
+      - model_cache:/home/app/.cache/huggingface
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8000/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks: [frontend_net, backend_net]
+    logging:
+      options: {max-size: "10m", max-file: "3"}
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: /api/v1
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-8080}:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
       retries: 5
+    networks: [frontend_net]
+    logging:
+      options: {max-size: "10m", max-file: "3"}
 
 volumes:
   postgres_data:
+  document_data:
+  chroma_data:
+  model_cache:
 
+networks:
+  frontend_net:
+  backend_net:
+    internal: true

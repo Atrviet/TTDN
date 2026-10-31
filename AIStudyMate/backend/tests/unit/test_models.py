@@ -4,6 +4,14 @@ from sqlalchemy.orm import configure_mappers
 import app.models  # noqa: F401
 from app.db.base import Base
 from app.models.chat import ChatSession
+from app.models.advanced_learning import (
+    Flashcard,
+    FlashcardDeck,
+    KnowledgeConcept,
+    StudyPlan,
+    TopicMastery,
+    TutorSession,
+)
 from app.models.document import Document
 from app.models.quiz import Question, Quiz, QuizAttempt
 from app.models.user import User
@@ -20,6 +28,19 @@ EXPECTED_TABLES = {
     "answer_options",
     "quiz_attempts",
     "user_answers",
+    "flashcard_decks",
+    "flashcards",
+    "flashcard_reviews",
+    "study_plans",
+    "study_tasks",
+    "study_availability",
+    "tutor_sessions",
+    "tutor_session_documents",
+    "tutor_messages",
+    "knowledge_concepts",
+    "knowledge_relations",
+    "topic_mastery",
+    "learning_recommendations",
 }
 
 
@@ -30,7 +51,15 @@ def constraint_names(table_name: str, constraint_type: type) -> set[str | None]:
 
 def test_all_expected_models_are_registered() -> None:
     assert set(Base.metadata.tables) == EXPECTED_TABLES
-    assert all(table.primary_key.columns.keys() == ["id"] for table in Base.metadata.tables.values())
+    assert all(
+        table.primary_key.columns.keys() == ["id"]
+        for name, table in Base.metadata.tables.items()
+        if name != "tutor_session_documents"
+    )
+    assert list(Base.metadata.tables["tutor_session_documents"].primary_key.columns.keys()) == [
+        "session_id",
+        "document_id",
+    ]
 
 
 def test_mappers_and_required_relationships_are_configured() -> None:
@@ -41,6 +70,11 @@ def test_mappers_and_required_relationships_are_configured() -> None:
         "chat_sessions",
         "quizzes",
         "quiz_attempts",
+        "flashcard_decks",
+        "study_plans",
+        "tutor_sessions",
+        "knowledge_concepts",
+        "topic_mastery",
     }
     assert {relationship.key for relationship in Document.__mapper__.relationships} == {
         "user",
@@ -66,6 +100,24 @@ def test_mappers_and_required_relationships_are_configured() -> None:
         "user",
         "user_answers",
     }
+    assert {relationship.key for relationship in FlashcardDeck.__mapper__.relationships} == {
+        "user", "document", "flashcards"
+    }
+    assert {relationship.key for relationship in Flashcard.__mapper__.relationships} == {
+        "deck", "source_document", "source_chunk", "reviews"
+    }
+    assert {relationship.key for relationship in StudyPlan.__mapper__.relationships} == {
+        "user", "tasks", "availability"
+    }
+    assert {relationship.key for relationship in TutorSession.__mapper__.relationships} == {
+        "user", "documents", "messages"
+    }
+    assert {relationship.key for relationship in KnowledgeConcept.__mapper__.relationships} == {
+        "user", "outgoing_relations", "incoming_relations", "mastery_records"
+    }
+    assert {relationship.key for relationship in TopicMastery.__mapper__.relationships} == {
+        "user", "concept", "recommendations"
+    }
 
 
 def test_ordering_and_answer_uniqueness_constraints_exist() -> None:
@@ -73,6 +125,14 @@ def test_ordering_and_answer_uniqueness_constraints_exist() -> None:
     assert "uq_questions_quiz_order" in constraint_names("questions", UniqueConstraint)
     assert "uq_answer_options_question_order" in constraint_names("answer_options", UniqueConstraint)
     assert "uq_user_answers_attempt_question" in constraint_names("user_answers", UniqueConstraint)
+    assert "uq_flashcards_deck_order" in constraint_names("flashcards", UniqueConstraint)
+    assert "uq_study_availability_plan_window" in constraint_names(
+        "study_availability", UniqueConstraint
+    )
+    assert "uq_knowledge_concepts_user_name" in constraint_names(
+        "knowledge_concepts", UniqueConstraint
+    )
+    assert "uq_topic_mastery_user_topic" in constraint_names("topic_mastery", UniqueConstraint)
 
 
 def test_numeric_check_constraints_exist() -> None:
@@ -105,6 +165,19 @@ def test_foreign_key_delete_behaviors_are_explicit() -> None:
         "answer_options": {"CASCADE"},
         "quiz_attempts": {"RESTRICT"},
         "user_answers": {"CASCADE", "RESTRICT"},
+        "flashcard_decks": {"CASCADE", "SET NULL"},
+        "flashcards": {"CASCADE", "SET NULL"},
+        "flashcard_reviews": {"CASCADE"},
+        "study_plans": {"CASCADE"},
+        "study_tasks": {"CASCADE", "SET NULL"},
+        "study_availability": {"CASCADE"},
+        "tutor_sessions": {"CASCADE"},
+        "tutor_session_documents": {"CASCADE"},
+        "tutor_messages": {"CASCADE"},
+        "knowledge_concepts": {"CASCADE"},
+        "knowledge_relations": {"CASCADE", "SET NULL"},
+        "topic_mastery": {"CASCADE", "SET NULL"},
+        "learning_recommendations": {"CASCADE", "SET NULL"},
     }
     for table_name, actions in expected.items():
         foreign_keys = {
@@ -126,7 +199,11 @@ def test_unique_identity_indexes_exist() -> None:
 
 
 def test_all_timestamps_are_timezone_aware() -> None:
-    timestamp_names = {"created_at", "updated_at", "started_at", "completed_at", "answered_at"}
+    timestamp_names = {
+        "created_at", "updated_at", "started_at", "completed_at", "answered_at",
+        "reviewed_at", "next_review_at", "planned_start_at", "due_at", "last_evidence_at",
+        "expires_at",
+    }
     for table in Base.metadata.tables.values():
         for column in table.columns:
             if column.name in timestamp_names:

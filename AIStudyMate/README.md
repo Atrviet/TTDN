@@ -2,6 +2,45 @@
 
 AI StudyMate is an intelligent learning assistant. The current foundation includes FastAPI, versioned API routing, environment-based configuration, structured logging, an async PostgreSQL data model, Alembic migrations, and isolated unit/integration tests.
 
+It lets a student upload PDF learning materials, create a semantic index, ask grounded questions with citations, run a bounded LangGraph study agent, generate and complete quizzes, and review learning analytics.
+
+### Features
+
+- JWT registration, login, refresh and student/admin roles.
+- Private PDF upload, validation, extraction and ownership enforcement.
+- Vietnamese-aware chunking, local or Gemini embeddings, persistent ChromaDB retrieval.
+- Gemini grounded chat with citations and cancellable SSE streaming.
+- LangGraph agent with authorized tools, step limits and prompt-injection boundaries.
+- Structured AI quiz generation, deterministic grading and attempt history.
+- User-scoped analytics with chart-friendly responses.
+- Responsive Vietnamese React interface and reproducible Docker Compose stack.
+
+### Technology stack
+
+| Layer | Technology |
+| --- | --- |
+| Frontend | React, TypeScript, Vite, Tailwind CSS, TanStack Query, Recharts |
+| API | Python 3.11, FastAPI, Pydantic v2, SQLAlchemy 2 async |
+| Data | PostgreSQL 16, Alembic, ChromaDB, persistent PDF storage |
+| AI | Google Gemini, Sentence Transformers, RAG, LangGraph |
+| Verification | pytest, Vitest, Testing Library, Docker health checks |
+
+```mermaid
+flowchart LR
+    Browser[React browser client] -->|HTTPS / REST + SSE| Proxy[Nginx frontend]
+    Proxy --> API[FastAPI]
+    API --> PG[(PostgreSQL)]
+    API --> Files[(PDF volume)]
+    API --> Chroma[(ChromaDB volume)]
+    API --> Gemini[Gemini API]
+    API --> Graph[LangGraph workflow]
+```
+
+For deployment, operations, backup and restore, see [`docs/deployment.md`](docs/deployment.md). For the defense package and demo script, see [`docs/final-defense.md`](docs/final-defense.md). Measured checks and remaining limitations are recorded in [`docs/final-verification.md`](docs/final-verification.md).
+
+The database and shared-service foundation for the advanced learning modules is
+documented in [`docs/step13-advanced-learning-foundation.md`](docs/step13-advanced-learning-foundation.md).
+
 ## Frontend (STEP 10)
 
 The React/Vite frontend lives in `frontend/` and implements the Vietnamese user experience for authentication, documents, PDF upload, RAG chat, Study Agent, quizzes, analytics, and profile viewing. Start it after the API is running:
@@ -39,19 +78,22 @@ cp .env.example .env
 
 The values in `.env.example` are development-only. Replace `JWT_SECRET_KEY` and database credentials before using a non-local environment. Never commit `.env`.
 
-## Start PostgreSQL
+## Start PostgreSQL for local backend development
 
 From the project root (`AIStudyMate/`):
 
 ```bash
-docker compose --env-file backend/.env up -d postgres
-docker compose ps
+POSTGRES_PASSWORD=ai_studymate_dev_password \
+JWT_SECRET_KEY=local-validation-secret-at-least-32-characters \
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d postgres
+
+docker compose -f docker-compose.yml -f docker-compose.dev.yml ps postgres
 ```
 
 Stop it with:
 
 ```bash
-docker compose --env-file backend/.env down
+docker compose -f docker-compose.yml -f docker-compose.dev.yml down
 ```
 
 ## Run the API
@@ -78,7 +120,7 @@ The health endpoint intentionally does not connect to PostgreSQL or Gemini.
 
 ## Database architecture
 
-PostgreSQL is the system of record for users, document metadata, chats, quizzes, attempts, and citations. ChromaDB will be introduced later as a vector index for semantic retrieval. ChromaDB stores embeddings and points back to `document_chunks.chroma_id`; it does not replace PostgreSQL's transactional data, constraints, ownership, or quiz history.
+PostgreSQL is the system of record for users, document metadata, chats, quizzes, attempts, and citations. ChromaDB is the derived vector index for semantic retrieval. It stores embeddings and points back to `document_chunks.chroma_id`; it does not replace PostgreSQL's transactional data, constraints, ownership, or quiz history.
 
 | Table | Purpose |
 | --- | --- |

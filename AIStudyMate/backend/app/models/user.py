@@ -9,6 +9,13 @@ from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.common import UserRole
 
 if TYPE_CHECKING:
+    from app.models.advanced_learning import (
+        FlashcardDeck,
+        KnowledgeConcept,
+        StudyPlan,
+        TopicMastery,
+        TutorSession,
+    )
     from app.models.chat import ChatSession
     from app.models.document import Document
     from app.models.quiz import Quiz, QuizAttempt
@@ -33,4 +40,17 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     chat_sessions: Mapped[list[ChatSession]] = relationship(back_populates="user", passive_deletes=True)
     quizzes: Mapped[list[Quiz]] = relationship(back_populates="user", passive_deletes=True)
     quiz_attempts: Mapped[list[QuizAttempt]] = relationship(back_populates="user", passive_deletes=True)
+    flashcard_decks: Mapped[list[FlashcardDeck]] = relationship(
+        back_populates="user", passive_deletes=True
+    )
+    study_plans: Mapped[list[StudyPlan]] = relationship(back_populates="user", passive_deletes=True)
+    tutor_sessions: Mapped[list[TutorSession]] = relationship(
+        back_populates="user", passive_deletes=True
+    )
+    knowledge_concepts: Mapped[list[KnowledgeConcept]] = relationship(
+        back_populates="user", passive_deletes=True
+    )
+    topic_mastery: Mapped[list[TopicMastery]] = relationship(
+        back_populates="user", passive_deletes=True
+    )
 

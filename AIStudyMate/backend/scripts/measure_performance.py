@@ -6,6 +6,7 @@ latencies, then removes all generated database/file/vector data.
 
 import asyncio
 import json
+import os
 import statistics
 import tempfile
 import time
@@ -20,7 +21,7 @@ from app.db.session import AsyncSessionFactory
 from app.models.user import User
 
 
-API = "http://127.0.0.1:8000/api/v1"
+API = os.getenv("AI_STUDYMATE_API", "http://127.0.0.1:8000/api/v1").rstrip("/")
 
 
 async def main() -> None:
@@ -116,9 +117,10 @@ async def main() -> None:
             if document_id:
                 await client.delete(f"{API}/documents/{document_id}", headers=headers)
 
-    async with AsyncSessionFactory() as session:
-        await session.execute(delete(User).where(User.email == email))
-        await session.commit()
+    if os.getenv("PERF_DELETE_USER") == "1":
+        async with AsyncSessionFactory() as session:
+            await session.execute(delete(User).where(User.email == email))
+            await session.commit()
     print(json.dumps({key: round(value, 2) for key, value in timings.items()}, indent=2))
 
 

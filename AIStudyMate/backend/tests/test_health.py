@@ -1,7 +1,7 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.main import app
+from app.main import app, settings
 
 
 @pytest.mark.asyncio
@@ -15,7 +15,7 @@ async def test_health_check() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("origin", ["http://localhost:5173", "http://127.0.0.1:5173"])
+@pytest.mark.parametrize("origin", [str(item).rstrip("/") for item in settings.cors_origins])
 async def test_frontend_cors_preflight(origin: str) -> None:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

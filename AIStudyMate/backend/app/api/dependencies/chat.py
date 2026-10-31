@@ -20,6 +20,7 @@ def get_llm_provider() -> LLMProvider:
         timeout_seconds=settings.gemini_timeout_seconds,
         max_retries=settings.gemini_max_retries,
         max_output_tokens=settings.gemini_max_output_tokens,
+        max_concurrent_requests=settings.gemini_max_concurrent_requests,
     )
 
 

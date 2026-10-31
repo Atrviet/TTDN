@@ -83,7 +83,7 @@ Measured on 2026-10-26 through the running localhost HTTP API, using PostgreSQL 
 | Gemini stream time to first token event | 1,203.24 ms |
 | Gemini stream total time | 1,406.54 ms |
 
-The benchmark script creates isolated data, measures real requests, then removes its document, vectors, chat session, and account. Results vary with hardware, model cache state, document size, network, Gemini quota and service load. Concurrent throughput and sustained-load percentiles were not measured.
+The benchmark script creates isolated data, measures real requests, and removes its document, vectors, and chat session. Set `PERF_DELETE_USER=1` only when the configured direct database connection points to a disposable local environment and the benchmark account should also be removed. Results vary with hardware, model cache state, document size, network, Gemini quota and service load. Concurrent throughput and sustained-load percentiles were not measured.
 
 ## Remaining limitations
 
