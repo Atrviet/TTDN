@@ -12,6 +12,6 @@ def test_migration_has_one_expected_head() -> None:
     config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     scripts = ScriptDirectory.from_config(config)
 
-    assert scripts.get_heads() == ["20261101_0010"]
+    assert scripts.get_heads() == ["20261101_0011"]
     assert scripts.get_base() == "20261021_0001"
 

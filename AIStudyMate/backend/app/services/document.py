@@ -31,6 +31,11 @@ class DocumentDatabaseError(Exception):
 class DocumentVectorCleanupError(Exception):
     """Raised when a deleted document's vectors cannot be removed."""
 
+class DocumentInUseError(Exception):
+    def __init__(self,resource_types:list[str])->None:
+        self.resource_types=resource_types
+        super().__init__("Document is referenced by learning resources")
+
 
 class DocumentService:
     def __init__(
@@ -102,6 +107,8 @@ class DocumentService:
 
     async def delete_owned(self, document_id: UUID, user_id: UUID) -> None:
         document = await self.get_owned(document_id, user_id)
+        dependencies=await self.documents.dependent_resource_types(document_id)
+        if dependencies:raise DocumentInUseError(dependencies)
         staged = await self.storage.stage_deletion(document.file_path)
         try:
             await self.documents.delete(document)

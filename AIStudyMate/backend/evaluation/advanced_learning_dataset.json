@@ -1,0 +1,32 @@
+{
+  "dataset_version": "1.0",
+  "documents": [{"id": "python-basics", "file": "documents/python_basics.md", "pages": 2}],
+  "retrieval_cases": [
+    {"question": "Vòng lặp for làm gì?", "expected_pages": [1], "retrieved_pages": [1, 2]},
+    {"question": "Khai báo hàm bằng từ khóa nào?", "expected_pages": [2], "retrieved_pages": [2, 1]}
+  ],
+  "citation_cases": [
+    {"question": "Vòng lặp for làm gì?", "expected_pages": [1], "cited_pages": [1]},
+    {"question": "Hàm Python trả kết quả thế nào?", "expected_pages": [2], "cited_pages": [2]}
+  ],
+  "flashcard_cases": [
+    {"front": "Từ khóa khai báo hàm Python?", "expected_answer": "def", "actual_answer": "def", "source_page": 2, "expected_page": 2},
+    {"front": "for lặp qua gì?", "expected_answer": "iterable", "actual_answer": "các phần tử trong iterable", "source_page": 1, "expected_page": 1}
+  ],
+  "tutor_cases": [
+    {"question": "Giải thích for", "claims": ["for loop iterates over each item in an iterable"], "evidence": "A for loop iterates over each item in an iterable."}
+  ],
+  "schedule_cases": [
+    {"exam_date": "2026-11-07", "allowed_weekdays": [0, 1, 2, 3, 4, 5, 6], "daily_minutes": 60, "tasks": [{"start": "2026-11-02T18:00:00+07:00", "duration": 30}, {"start": "2026-11-02T18:30:00+07:00", "duration": 30}, {"start": "2026-11-04T18:00:00+07:00", "duration": 30}]}
+  ],
+  "knowledge_graph_cases": [
+    {"expected_relations": [["for loop", "iterable", "related_to"], ["function", "return", "related_to"]], "predicted_relations": [["for loop", "iterable", "related_to"], ["function", "return", "related_to"]]}
+  ],
+  "quiz_cases": [
+    {"question": "Từ khóa khai báo hàm?", "expected": "def", "selected": "def", "source_page": 2},
+    {"question": "for dùng với đối tượng nào?", "expected": "iterable", "selected": "iterable", "source_page": 1}
+  ],
+  "weakness_cases": [
+    {"quiz_score": 0.5, "flashcard_score": 0.0, "practice_score": null, "weights": {"quiz": 0.6, "flashcard": 0.3, "practice": 0.1}, "expected_mastery": 0.3333333333}
+  ]
+}

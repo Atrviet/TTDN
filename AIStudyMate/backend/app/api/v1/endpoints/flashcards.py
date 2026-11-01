@@ -1,7 +1,8 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Header, HTTPException, Query, status
+from typing import Annotated
 
 from app.ai.llm.base import LLMError
 from app.ai.rag.embeddings.base import EmbeddingError
@@ -13,6 +14,8 @@ from app.ai.rag.service import (
 from app.ai.rag.vector_store import VectorStoreError
 from app.api.dependencies.auth import CurrentUser
 from app.api.dependencies.flashcard import FlashcardServiceDependency
+from app.api.dependencies.idempotency import IdempotencyServiceDependency
+from app.services.idempotency import IdempotencyClaim,IdempotencyConflictError,IdempotencyInProgressError
 from app.models.advanced_learning import Flashcard, FlashcardDeck, FlashcardReview
 from app.models.common import FlashcardReviewRating
 from app.schemas.flashcard import (
@@ -116,20 +119,33 @@ async def generate_flashcards(
     request: GenerateFlashcardsRequest,
     current_user: CurrentUser,
     service: FlashcardServiceDependency,
+    idempotency: IdempotencyServiceDependency,
+    idempotency_key:Annotated[str|None,Header(alias="Idempotency-Key",max_length=128)]=None,
 ) -> FlashcardDeckResponse:
+    claim=IdempotencyClaim(None,None)
     try:
-        return deck_response(await service.generate(request, current_user.id))
+        claim=await idempotency.claim(current_user.id,"flashcards.generate",idempotency_key,request)
+        if claim.completed_resource_id:return deck_response(await service.get_deck(claim.completed_resource_id,current_user.id))
+        deck=await service.generate(request,current_user.id);await idempotency.complete(claim,deck.id);return deck_response(deck)
+    except IdempotencyConflictError as exc:raise HTTPException(409,"Idempotency-Key was already used with another request") from exc
+    except IdempotencyInProgressError as exc:raise HTTPException(409,"An identical generation request is already in progress") from exc
     except (FlashcardDeckNotFoundError, RAGDocumentNotFoundError) as exc:
+        await idempotency.fail(claim,"document_not_found")
         raise HTTPException(status_code=404, detail="Document not found") from exc
     except (DocumentNotIndexableError, IndexConfigurationMismatchError, EmptyFlashcardContextError) as exc:
+        await idempotency.fail(claim,"invalid_context")
         raise HTTPException(status_code=409, detail="Documents have no usable indexed content") from exc
     except (InvalidGeneratedFlashcardsError,) as exc:
+        await idempotency.fail(claim,"invalid_ai_output")
         raise HTTPException(status_code=502, detail="AI returned invalid flashcards") from exc
     except FlashcardLimitError as exc:
+        await idempotency.fail(claim,"request_limit")
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except (LLMError, EmbeddingError, VectorStoreError) as exc:
+        await idempotency.fail(claim,"ai_unavailable")
         raise HTTPException(status_code=503, detail="Flashcard generation is temporarily unavailable") from exc
     except FlashcardPersistenceError as exc:
+        await idempotency.fail(claim,"persistence_error")
         raise HTTPException(status_code=500, detail="Unable to save generated flashcards") from exc
 
 

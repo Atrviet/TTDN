@@ -693,3 +693,10 @@ them in PostgreSQL with page/chunk provenance, and visualizes them with React Fl
 STEP 18 calculates explainable topic mastery from real quiz answers, flashcard reviews, and completed
 study tasks, then links students to relevant revision actions. See the
 [STEP 18 formulas and API guide](docs/step18-learning-weakness.md).
+
+## Advanced Learning Integration and Evaluation
+
+STEP 19 connects PDF indexing, flashcards, Study Planner, Tutor, Knowledge Graph, Quiz and Weakness
+Detection in one tested workflow. It adds generation idempotency, safe document deletion and a
+reproducible reference evaluation dataset. See the
+[STEP 19 integration, evaluation and defense guide](docs/step19-integration-evaluation.md).

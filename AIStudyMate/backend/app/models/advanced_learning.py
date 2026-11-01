@@ -522,3 +522,15 @@ class LearningTopicMapping(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
 
     concept: Mapped[KnowledgeConcept | None] = relationship()
+
+
+class AIGenerationRequest(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__="ai_generation_requests"
+    __table_args__=(UniqueConstraint("user_id","operation","idempotency_key",name="uq_ai_generation_request_key"),Index("ix_ai_generation_requests_user_created", "user_id","created_at"),)
+    user_id:Mapped[UUID]=mapped_column(ForeignKey("users.id",ondelete="CASCADE"),nullable=False,index=True)
+    operation:Mapped[str]=mapped_column(String(64),nullable=False)
+    idempotency_key:Mapped[str]=mapped_column(String(128),nullable=False)
+    request_hash:Mapped[str]=mapped_column(String(64),nullable=False)
+    status:Mapped[str]=mapped_column(String(16),nullable=False,server_default="in_progress")
+    resource_id:Mapped[UUID|None]=mapped_column(PostgreSQLUUID(as_uuid=True))
+    error_code:Mapped[str|None]=mapped_column(String(64))

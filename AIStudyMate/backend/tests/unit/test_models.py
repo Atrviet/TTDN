@@ -47,6 +47,7 @@ EXPECTED_TABLES = {
     "topic_mastery",
     "learning_recommendations",
     "learning_topic_mappings",
+    "ai_generation_requests",
 }
 
 
@@ -196,6 +197,7 @@ def test_foreign_key_delete_behaviors_are_explicit() -> None:
         "topic_mastery": {"CASCADE", "SET NULL"},
         "learning_recommendations": {"CASCADE", "SET NULL"},
         "learning_topic_mappings": {"CASCADE", "SET NULL"},
+        "ai_generation_requests": {"CASCADE"},
     }
     for table_name, actions in expected.items():
         foreign_keys = {

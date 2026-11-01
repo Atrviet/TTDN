@@ -1,6 +1,7 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, status
+from typing import Annotated
 
 from app.ai.llm.base import LLMError
 from app.ai.rag.embeddings.base import EmbeddingError
@@ -12,6 +13,8 @@ from app.ai.rag.service import (
 from app.ai.rag.vector_store import VectorStoreError
 from app.api.dependencies.auth import CurrentUser
 from app.api.dependencies.quiz import QuizServiceDependency
+from app.api.dependencies.idempotency import IdempotencyServiceDependency
+from app.services.idempotency import IdempotencyClaim,IdempotencyConflictError,IdempotencyInProgressError
 from app.models.quiz import Quiz, QuizAttempt
 from app.schemas.quiz import (
     QuestionResultResponse,
@@ -87,20 +90,33 @@ async def generate_quiz(
     request: QuizGenerateRequest,
     current_user: CurrentUser,
     service: QuizServiceDependency,
+    idempotency:IdempotencyServiceDependency,
+    idempotency_key:Annotated[str|None,Header(alias="Idempotency-Key",max_length=128)]=None,
 ) -> QuizDetailResponse:
+    claim=IdempotencyClaim(None,None)
     try:
-        quiz = await service.generate(request, current_user.id)
+        claim=await idempotency.claim(current_user.id,"quizzes.generate",idempotency_key,request)
+        if claim.completed_resource_id:return quiz_detail(await service.get_owned(claim.completed_resource_id,current_user.id))
+        quiz = await service.generate(request, current_user.id);await idempotency.complete(claim,quiz.id)
+    except IdempotencyConflictError as exc:raise HTTPException(409,"Idempotency-Key was already used with another request") from exc
+    except IdempotencyInProgressError as exc:raise HTTPException(409,"An identical generation request is already in progress") from exc
     except (QuizDocumentNotFoundError, RAGDocumentNotFoundError) as exc:
+        await idempotency.fail(claim,"document_not_found")
         raise HTTPException(status_code=404, detail="Document not found") from exc
     except (DocumentNotIndexableError, IndexConfigurationMismatchError, EmptyQuizContextError) as exc:
+        await idempotency.fail(claim,"invalid_context")
         raise HTTPException(status_code=409, detail="Document has no usable indexed content") from exc
     except InvalidGeneratedQuizError as exc:
+        await idempotency.fail(claim,"invalid_ai_output")
         raise HTTPException(status_code=502, detail="AI returned an invalid quiz") from exc
     except QuizRequestValidationError as exc:
+        await idempotency.fail(claim,"invalid_request")
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except (LLMError, EmbeddingError, VectorStoreError) as exc:
+        await idempotency.fail(claim,"ai_unavailable")
         raise HTTPException(status_code=503, detail="Quiz generation is temporarily unavailable") from exc
     except QuizPersistenceError as exc:
+        await idempotency.fail(claim,"persistence_error")
         raise HTTPException(status_code=500, detail="Unable to save generated quiz") from exc
     return quiz_detail(quiz)
 

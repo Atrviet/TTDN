@@ -8,5 +8,5 @@ from app.services.study_plan import StudyPlanService
 
 
 def get_study_plan_service(session:SessionDependency,rag_service:RAGServiceDependency,llm:LLMDependency):
-    s=get_settings(); return StudyPlanService(session,rag_service,llm,max_steps=s.planner_max_steps,max_retries=s.planner_max_retries,timeout_seconds=s.planner_timeout_seconds,context_top_k=s.planner_context_top_k)
+    s=get_settings(); return StudyPlanService(session,rag_service,llm,max_steps=s.planner_max_steps,max_retries=s.planner_max_retries,timeout_seconds=s.planner_timeout_seconds,context_top_k=s.planner_context_top_k,needs_review_threshold=s.mastery_needs_review_threshold)
 StudyPlanServiceDependency=Annotated[StudyPlanService,Depends(get_study_plan_service)]

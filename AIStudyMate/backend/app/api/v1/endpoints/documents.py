@@ -24,6 +24,7 @@ from app.schemas.document import (
 from app.schemas.rag import IndexDocumentResponse
 from app.services.document import (
     DocumentDatabaseError,
+    DocumentInUseError,
     DocumentNotFoundError,
     DocumentVectorCleanupError,
 )
@@ -148,6 +149,8 @@ async def delete_document(
         await document_service.delete_owned(document_id, current_user.id)
     except DocumentNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found") from exc
+    except DocumentInUseError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,detail={"message":"Document is used by learning resources; delete those resources first","resource_types":exc.resource_types}) from exc
     except StorageError as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Document storage operation failed") from exc
     except DocumentDatabaseError as exc:

@@ -1,5 +1,6 @@
 from uuid import UUID
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, status
+from typing import Annotated
 from app.ai.llm.base import LLMError
 from app.api.dependencies.auth import CurrentUser
 from app.api.dependencies.study_plan import StudyPlanServiceDependency
@@ -7,6 +8,8 @@ from app.models.advanced_learning import StudyPlan, StudyTask
 from app.models.common import StudyTaskStatus
 from app.schemas.study_plan import *
 from app.services.study_plan import *
+from app.api.dependencies.idempotency import IdempotencyServiceDependency
+from app.services.idempotency import IdempotencyClaim,IdempotencyConflictError,IdempotencyInProgressError
 
 router=APIRouter(tags=["Study Planner"])
 
@@ -24,10 +27,17 @@ def map_error(exc):
     return HTTPException(500,"Unable to persist study plan")
 
 @router.post("/study-plans/generate",response_model=StudyPlanDetailResponse,status_code=201)
-async def generate(r:GenerateStudyPlanRequest,u:CurrentUser,s:StudyPlanServiceDependency):
-    try:return detail(await s.generate(r,u.id))
+async def generate(r:GenerateStudyPlanRequest,u:CurrentUser,s:StudyPlanServiceDependency,i:IdempotencyServiceDependency,idempotency_key:Annotated[str|None,Header(alias="Idempotency-Key",max_length=128)]=None):
+    claim=IdempotencyClaim(None,None)
+    try:
+        claim=await i.claim(u.id,"study_plans.generate",idempotency_key,r)
+        if claim.completed_resource_id:return detail(await s.get(claim.completed_resource_id,u.id))
+        plan=await s.generate(r,u.id);await i.complete(claim,plan.id);return detail(plan)
+    except IdempotencyConflictError as exc:raise HTTPException(409,"Idempotency-Key was already used with another request") from exc
+    except IdempotencyInProgressError as exc:raise HTTPException(409,"An identical generation request is already in progress") from exc
     except Exception as exc:
-        if isinstance(exc,(StudyPlanNotFoundError,StudyTaskNotFoundError,StudyPlanDocumentError,ImpossibleScheduleError,StudyPlannerTimeoutError,StudyPlanPersistenceError,LLMError)): raise map_error(exc) from exc
+        if isinstance(exc,(StudyPlanNotFoundError,StudyTaskNotFoundError,StudyPlanDocumentError,ImpossibleScheduleError,StudyPlannerTimeoutError,StudyPlanPersistenceError,LLMError)):
+            await i.fail(claim,type(exc).__name__);raise map_error(exc) from exc
         raise
 @router.get("/study-plans",response_model=StudyPlanListResponse)
 async def list_plans(u:CurrentUser,s:StudyPlanServiceDependency): return StudyPlanListResponse(items=[summary(p) for p in await s.list(u.id)])

@@ -4,17 +4,19 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 from langgraph.errors import GraphRecursionError
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.llm.base import LLMProvider
 from app.ai.planner.graph import StudyPlannerGraph
 from app.ai.planner.state import StudyPlannerState
 from app.ai.rag.service import RAGService
 from app.ai.topics import LearningTopicIdentifier
-from app.models.advanced_learning import StudyAvailability, StudyPlan, StudyTask
+from app.models.advanced_learning import StudyAvailability, StudyPlan, StudyTask, TopicMastery
 from app.models.common import RAGIndexingStatus, StudyPlanStatus, StudyTaskStatus
 from app.repositories.study_plan import StudyPlanRepository
 from app.services.ownership import DocumentOwnershipService, OwnedResourceNotFoundError
 from app.schemas.study_plan import GenerateStudyPlanRequest, UpdateStudyPlanRequest, UpdateStudyTaskRequest
+from app.services.knowledge_graph import normalize_concept_name
 
 
 class StudyPlanNotFoundError(Exception): pass
@@ -26,8 +28,8 @@ class StudyPlanPersistenceError(Exception): pass
 
 
 class StudyPlanService:
-    def __init__(self, session: AsyncSession, rag_service: RAGService, llm: LLMProvider, *, max_steps: int, max_retries: int, timeout_seconds: float, context_top_k: int):
-        self.session=session; self.rag_service=rag_service; self.llm=llm; self.max_steps=max_steps; self.max_retries=max_retries; self.timeout_seconds=timeout_seconds; self.context_top_k=context_top_k
+    def __init__(self, session: AsyncSession, rag_service: RAGService, llm: LLMProvider, *, max_steps: int, max_retries: int, timeout_seconds: float, context_top_k: int, needs_review_threshold: float=0.5):
+        self.session=session; self.rag_service=rag_service; self.llm=llm; self.max_steps=max_steps; self.max_retries=max_retries; self.timeout_seconds=timeout_seconds; self.context_top_k=context_top_k; self.needs_review_threshold=needs_review_threshold
         self.repository=StudyPlanRepository(session); self.ownership=DocumentOwnershipService(session)
 
     async def generate(self, request: GenerateStudyPlanRequest, user_id: UUID):
@@ -56,7 +58,14 @@ class StudyPlanService:
             plan=StudyPlan(user_id=state["user_id"],title=state["subject"],goal=state["goal"],subject=state["subject"],difficulty=state["difficulty"],status=StudyPlanStatus.ACTIVE,start_date=datetime.now(ZoneInfo(state["timezone"])).date(),end_date=state["exam_date"],timezone=state["timezone"],daily_available_minutes=state["daily_available_minutes"],preferred_session_minutes=state["preferred_session_minutes"],available_days=state["available_days"])
             plan.documents=documents; plan.tasks=[]; plan.availability=[StudyAvailability(day_of_week=day,start_time=time(18),end_time=(datetime.combine(datetime.today(), time(18))+timedelta(minutes=state["daily_available_minutes"])).time()) for day in state["available_days"]]
             self.repository.add(plan); await self.session.flush()
-        plan.tasks.extend([StudyTask(document_id=item["document_id"],title=item["title"],description=item["description"],topic=item["topic"],task_type=item["task_type"],priority=item["priority"],status=StudyTaskStatus.PENDING,planned_start_at=item["planned_start_at"],due_at=item["due_at"],planned_duration_minutes=item["planned_duration_minutes"]) for item in state["proposed_tasks"]])
+        weak_keys=set((await self.session.scalars(select(TopicMastery.topic_key).where(TopicMastery.user_id==state["user_id"],TopicMastery.mastery_score<self.needs_review_threshold))).all())
+        tasks=[]
+        for item in state["proposed_tasks"]:
+            weak=normalize_concept_name(item["topic"]) in weak_keys
+            description=item["description"]
+            if weak:description=f"Ưu tiên ôn tập từ Weakness Detection. {description or ''}".strip()
+            tasks.append(StudyTask(document_id=item["document_id"],title=item["title"],description=description,topic=item["topic"],task_type=item["task_type"],priority=1 if weak else item["priority"],status=StudyTaskStatus.PENDING,planned_start_at=item["planned_start_at"],due_at=item["due_at"],planned_duration_minutes=item["planned_duration_minutes"]))
+        plan.tasks.extend(tasks)
         await self._commit(); return plan
 
     async def list(self,user_id): return await self.repository.list_owned(user_id)

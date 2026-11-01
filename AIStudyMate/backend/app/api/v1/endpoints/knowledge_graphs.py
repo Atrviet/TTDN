@@ -1,10 +1,13 @@
 import asyncio
 from uuid import UUID
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, Header, HTTPException, Response, status
+from typing import Annotated
 from app.ai.llm.base import LLMError
 from app.ai.rag.service import DocumentNotIndexableError, IndexConfigurationMismatchError, RAGDocumentNotFoundError
 from app.api.dependencies.auth import CurrentUser
 from app.api.dependencies.knowledge_graph import KnowledgeGraphServiceDependency
+from app.api.dependencies.idempotency import IdempotencyServiceDependency
+from app.services.idempotency import IdempotencyClaim,IdempotencyConflictError,IdempotencyInProgressError
 from app.schemas.knowledge_graph import ConceptDetail, GenerateKnowledgeGraphRequest, GraphEdge, GraphEdgesResponse, GraphNode, GraphNodesResponse, KnowledgeGraphDetail, KnowledgeGraphList, KnowledgeGraphSummary, RelationType, SourceReference
 from app.services.knowledge_graph import KnowledgeGraphDocumentError, KnowledgeGraphGenerationError, KnowledgeGraphLimitError, KnowledgeGraphNotFoundError, KnowledgeGraphPersistenceError
 
@@ -33,13 +36,19 @@ def detail(graph)->KnowledgeGraphDetail:
     nodes,edges=data(graph); return KnowledgeGraphDetail(**summary(graph).model_dump(),nodes=nodes,edges=edges)
 
 @router.post("/generate",response_model=KnowledgeGraphDetail,status_code=status.HTTP_201_CREATED)
-async def generate(payload:GenerateKnowledgeGraphRequest,user:CurrentUser,service:KnowledgeGraphServiceDependency):
-    try: return detail(await service.generate(payload,user.id))
-    except (KnowledgeGraphDocumentError,RAGDocumentNotFoundError) as exc: raise HTTPException(404,"Document not found") from exc
-    except (DocumentNotIndexableError,IndexConfigurationMismatchError) as exc: raise HTTPException(409,str(exc) or "Document index is incompatible") from exc
-    except KnowledgeGraphLimitError as exc: raise HTTPException(413,str(exc)) from exc
-    except (LLMError,KnowledgeGraphGenerationError,asyncio.TimeoutError) as exc: raise HTTPException(503,"Knowledge extraction is temporarily unavailable") from exc
-    except KnowledgeGraphPersistenceError as exc: raise HTTPException(500,"Unable to save knowledge graph") from exc
+async def generate(payload:GenerateKnowledgeGraphRequest,user:CurrentUser,service:KnowledgeGraphServiceDependency,idempotency:IdempotencyServiceDependency,idempotency_key:Annotated[str|None,Header(alias="Idempotency-Key",max_length=128)]=None):
+    claim=IdempotencyClaim(None,None)
+    try:
+        claim=await idempotency.claim(user.id,"knowledge_graphs.generate",idempotency_key,payload)
+        if claim.completed_resource_id:return detail(await service.get(claim.completed_resource_id,user.id))
+        graph=await service.generate(payload,user.id);await idempotency.complete(claim,graph.id);return detail(graph)
+    except IdempotencyConflictError as exc:raise HTTPException(409,"Idempotency-Key was already used with another request") from exc
+    except IdempotencyInProgressError as exc:raise HTTPException(409,"An identical generation request is already in progress") from exc
+    except (KnowledgeGraphDocumentError,RAGDocumentNotFoundError) as exc: await idempotency.fail(claim,"document_not_found");raise HTTPException(404,"Document not found") from exc
+    except (DocumentNotIndexableError,IndexConfigurationMismatchError) as exc: await idempotency.fail(claim,"invalid_context");raise HTTPException(409,str(exc) or "Document index is incompatible") from exc
+    except KnowledgeGraphLimitError as exc: await idempotency.fail(claim,"request_limit");raise HTTPException(413,str(exc)) from exc
+    except (LLMError,KnowledgeGraphGenerationError,asyncio.TimeoutError) as exc: await idempotency.fail(claim,"ai_unavailable");raise HTTPException(503,"Knowledge extraction is temporarily unavailable") from exc
+    except KnowledgeGraphPersistenceError as exc: await idempotency.fail(claim,"persistence_error");raise HTTPException(500,"Unable to save knowledge graph") from exc
 
 @router.get("",response_model=KnowledgeGraphList)
 async def list_graphs(user:CurrentUser,service:KnowledgeGraphServiceDependency): return KnowledgeGraphList(items=[summary(g) for g in await service.list(user.id)])

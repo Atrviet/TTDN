@@ -52,7 +52,9 @@ async def test_generate_batch_deduplicate_provenance_ownership_empty_failure_and
     headers={"Authorization":f"Bearer {create_access_token(owner.id,owner.role)}"};other_headers={"Authorization":f"Bearer {create_access_token(other.id,other.role)}"}
     try:
         async with AsyncClient(transport=ASGITransport(app=app),base_url="http://test") as client:
-            response=await client.post("/api/v1/knowledge-graphs/generate",headers=headers,json={"title":"Python Graph","document_ids":[str(doc.id)]});assert response.status_code==201,response.text;body=response.json();graph_id=body["id"]
+            idem_headers={**headers,"Idempotency-Key":f"kg-{suffix}"};response=await client.post("/api/v1/knowledge-graphs/generate",headers=idem_headers,json={"title":"Python Graph","document_ids":[str(doc.id)]});assert response.status_code==201,response.text;body=response.json();graph_id=body["id"]
+            replay=await client.post("/api/v1/knowledge-graphs/generate",headers=idem_headers,json={"title":"Python Graph","document_ids":[str(doc.id)]});assert replay.status_code==201 and replay.json()["id"]==graph_id
+            conflict=await client.post("/api/v1/knowledge-graphs/generate",headers=idem_headers,json={"title":"Different","document_ids":[str(doc.id)]});assert conflict.status_code==409
             assert llm.calls==2;assert body["node_count"]==2;assert body["edge_count"]==1;assert body["nodes"][0]["sources"][0]["page_number"]==1;assert any(n["ambiguous"] for n in body["nodes"])
             assert (await client.get(f"/api/v1/knowledge-graphs/{graph_id}",headers=other_headers)).status_code==404
             concept_id=body["nodes"][0]["id"];assert (await client.get(f"/api/v1/knowledge-graphs/{graph_id}/concepts/{concept_id}",headers=headers)).status_code==200

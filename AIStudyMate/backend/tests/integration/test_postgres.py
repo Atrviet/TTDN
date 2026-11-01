@@ -40,6 +40,7 @@ EXPECTED_TABLES = {
     "topic_mastery",
     "learning_recommendations",
     "learning_topic_mappings",
+    "ai_generation_requests",
 }
 
 
@@ -101,7 +102,7 @@ async def test_migration_upgrade_downgrade_and_foreign_keys() -> None:
             )
             version = await connection.scalar(text("SELECT version_num FROM alembic_version"))
         assert EXPECTED_TABLES <= tables
-        assert version == "20261101_0010"
+        assert version == "20261101_0011"
         assert foreign_keys[0]["options"]["ondelete"] == "CASCADE"
     finally:
         await engine.dispose()
