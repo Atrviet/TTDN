@@ -5,7 +5,7 @@ import type {
   QuizSummary, SendMessageResponse, TokenPair, User, WeakTopicsResponse,
   DueFlashcards, FlashcardDeck, FlashcardDeckSummary, FlashcardRating, FlashcardReview,
   FlashcardStats,
-  StudyPlan, StudyPlanSummary, StudyTask, StudyTaskStatus,
+  StudyPlan, StudyPlanSummary, StudyTask, StudyTaskStatus, TutorDifficulty, TutorMode, TutorReply, TutorSession, TutorSessionDetail,
 } from "../types/api";
 
 const baseURL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
@@ -208,4 +208,13 @@ export const studyPlansApi = {
   updateTask: async (id: string, input: { status: StudyTaskStatus; actual_duration_minutes?: number; planned_start_at?: string }) => (await http.patch<StudyTask>(`/study-tasks/${id}`, input)).data,
   replan: async (id: string) => (await http.post<StudyPlan>(`/study-plans/${id}/replan`, {})).data,
   remove: async (id: string) => { await http.delete(`/study-plans/${id}`); },
+};
+
+export const tutorApi = {
+  sessions: async () => (await http.get<{ items: TutorSession[] }>("/tutor/sessions")).data.items,
+  get: async (id: string) => (await http.get<TutorSessionDetail>(`/tutor/sessions/${id}`)).data,
+  create: async (input: { title: string; learning_objective?: string; document_ids: string[] }) => (await http.post<TutorSession>("/tutor/sessions", input)).data,
+  update: async (id: string, input: { title?: string; learning_objective?: string; document_ids?: string[] }) => (await http.patch<TutorSession>(`/tutor/sessions/${id}`, input)).data,
+  remove: async (id: string) => { await http.delete(`/tutor/sessions/${id}`); },
+  send: async (id: string, input: { message: string; mode: TutorMode; difficulty: TutorDifficulty; document_ids: string[] }) => (await http.post<TutorReply>(`/tutor/sessions/${id}/messages`, input)).data,
 };

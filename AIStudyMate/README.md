@@ -675,3 +675,9 @@ Metric formulas:
 The current schema does not have a curriculum topic taxonomy. Therefore weak topics use the real `quiz.title` as `topic` and explicitly return `topic_basis: "quiz_title"`. Only quizzes with at least one persisted incorrect answer are returned. This is a factual weak-area signal, not an AI inference about conceptual mastery.
 
 Users with no completed attempts receive zero counts, `null` average/highest percentages, and empty chart arrays. All SQL statements include the JWT-derived `QuizAttempt.user_id`; client-supplied user IDs are not accepted. Migration `20261026_0005` adds `(user_id, completed_at)` to support filtering and ordering analytics queries efficiently.
+
+## Personalized AI Tutor
+
+STEP 16 adds isolated tutor sessions, five teaching modes, bounded LangGraph execution, authorized
+RAG citations, real quiz/flashcard evidence, and a React Tutor workspace. See
+[the STEP 16 architecture and API guide](docs/step16-personalized-ai-tutor.md).

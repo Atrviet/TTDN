@@ -54,3 +54,8 @@ export type StudyTaskStatus = "pending" | "in_progress" | "completed" | "skipped
 export interface StudyTask { id: UUID; plan_id: UUID; document_id: UUID | null; title: string; description: string | null; topic: string; task_type: string; priority: number; status: StudyTaskStatus; planned_start_at: string | null; due_at: string | null; planned_duration_minutes: number; actual_duration_minutes: number | null; completed_at: string | null }
 export interface StudyPlanSummary { id: UUID; title: string; goal: string | null; subject: string; difficulty: Difficulty; status: "draft" | "active" | "completed" | "archived"; start_date: string; exam_date: string; timezone: string; daily_available_minutes: number; preferred_session_minutes: number; available_days: number[]; document_ids: UUID[]; task_count: number; completed_count: number; progress_percentage: number; planned_minutes: number; actual_minutes: number; created_at: string; updated_at: string }
 export interface StudyPlan extends StudyPlanSummary { tasks: StudyTask[] }
+export type TutorMode = "explain" | "socratic" | "practice" | "hint" | "review";
+export type TutorDifficulty = "beginner" | "intermediate" | "advanced";
+export interface TutorSession { id: UUID; title: string; learning_objective: string | null; document_ids: UUID[]; created_at: string; updated_at: string }
+export interface TutorSessionDetail extends TutorSession { messages: ChatMessage[] }
+export interface TutorReply { session_id: UUID; mode: TutorMode; difficulty: TutorDifficulty; user_message: ChatMessage; assistant_message: ChatMessage; model: string | null; execution_steps: number }

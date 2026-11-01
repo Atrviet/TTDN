@@ -11,6 +11,7 @@ from app.api.v1.endpoints.rag import router as rag_router
 from app.api.v1.endpoints.quizzes import router as quizzes_router
 from app.api.v1.endpoints.users import router as users_router
 from app.api.v1.endpoints.study_plans import router as study_plans_router
+from app.api.v1.endpoints.tutor import router as tutor_router
 
 
 api_router = APIRouter()
@@ -25,4 +26,5 @@ api_router.include_router(agent_router)
 api_router.include_router(quizzes_router)
 api_router.include_router(analytics_router)
 api_router.include_router(study_plans_router)
+api_router.include_router(tutor_router)
 
