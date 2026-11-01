@@ -46,6 +46,7 @@ EXPECTED_TABLES = {
     "knowledge_graph_concepts",
     "topic_mastery",
     "learning_recommendations",
+    "learning_topic_mappings",
 }
 
 
@@ -194,6 +195,7 @@ def test_foreign_key_delete_behaviors_are_explicit() -> None:
         "knowledge_graph_concepts": {"CASCADE"},
         "topic_mastery": {"CASCADE", "SET NULL"},
         "learning_recommendations": {"CASCADE", "SET NULL"},
+        "learning_topic_mappings": {"CASCADE", "SET NULL"},
     }
     for table_name, actions in expected.items():
         foreign_keys = {
@@ -218,7 +220,7 @@ def test_all_timestamps_are_timezone_aware() -> None:
     timestamp_names = {
         "created_at", "updated_at", "started_at", "completed_at", "answered_at",
         "reviewed_at", "next_review_at", "planned_start_at", "due_at", "last_evidence_at",
-        "expires_at",
+        "expires_at", "last_practiced_at", "last_calculated_at",
     }
     for table in Base.metadata.tables.values():
         for column in table.columns:

@@ -687,3 +687,9 @@ RAG citations, real quiz/flashcard evidence, and a React Tutor workspace. See
 STEP 17 extracts normalized concepts and typed relationships from authorized indexed PDFs, persists
 them in PostgreSQL with page/chunk provenance, and visualizes them with React Flow. See the
 [STEP 17 architecture and API guide](docs/step17-knowledge-graphs.md).
+
+## Learning Weakness Detection
+
+STEP 18 calculates explainable topic mastery from real quiz answers, flashcard reviews, and completed
+study tasks, then links students to relevant revision actions. See the
+[STEP 18 formulas and API guide](docs/step18-learning-weakness.md).

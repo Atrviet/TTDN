@@ -7,6 +7,7 @@ import type {
   FlashcardStats,
   StudyPlan, StudyPlanSummary, StudyTask, StudyTaskStatus, TutorDifficulty, TutorMode, TutorReply, TutorSession, TutorSessionDetail,
   KnowledgeGraph, KnowledgeGraphSummary,
+  LearningRecommendation, MasteryList, RecalculateMastery,
 } from "../types/api";
 
 const baseURL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
@@ -225,4 +226,11 @@ export const knowledgeGraphsApi = {
   get: async (id: string) => (await http.get<KnowledgeGraph>(`/knowledge-graphs/${id}`)).data,
   generate: async (input: { title: string; description?: string; document_ids: string[] }) => (await http.post<KnowledgeGraph>("/knowledge-graphs/generate", input)).data,
   remove: async (id: string) => { await http.delete(`/knowledge-graphs/${id}`); },
+};
+
+export const learningApi = {
+  mastery: async () => (await http.get<MasteryList>("/learning/mastery")).data,
+  weakTopics: async () => (await http.get<MasteryList>("/learning/weak-topics")).data,
+  recommendations: async () => (await http.get<{ items: LearningRecommendation[] }>("/learning/recommendations")).data.items,
+  recalculate: async () => (await http.post<RecalculateMastery>("/learning/mastery/recalculate")).data,
 };

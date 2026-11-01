@@ -83,6 +83,12 @@ class Settings(BaseSettings):
     knowledge_graph_max_output_tokens: int = Field(default=4096, ge=512, le=8192)
     knowledge_graph_timeout_seconds: float = Field(default=60, gt=0, le=300)
     knowledge_graph_validation_retries: int = Field(default=1, ge=0, le=3)
+    mastery_quiz_weight: float = Field(default=0.60, ge=0, le=1)
+    mastery_flashcard_weight: float = Field(default=0.30, ge=0, le=1)
+    mastery_practice_weight: float = Field(default=0.10, ge=0, le=1)
+    mastery_recency_half_life_days: float = Field(default=30, gt=0, le=365)
+    mastery_needs_review_threshold: float = Field(default=0.50, ge=0, le=1)
+    mastery_strong_threshold: float = Field(default=0.75, ge=0, le=1)
     document_storage_dir: Path = Path("./document_storage")
     max_pdf_size_mb: int = Field(default=20, gt=0, le=100)
     cors_origins: list[AnyHttpUrl] = [AnyHttpUrl("http://localhost:5173")]
@@ -107,6 +113,10 @@ class Settings(BaseSettings):
             raise ValueError("QUIZ_MIN_QUESTIONS must not exceed QUIZ_MAX_QUESTIONS")
         if self.flashcard_min_cards > self.flashcard_max_cards:
             raise ValueError("FLASHCARD_MIN_CARDS must not exceed FLASHCARD_MAX_CARDS")
+        if abs(self.mastery_quiz_weight + self.mastery_flashcard_weight + self.mastery_practice_weight - 1.0) > 1e-9:
+            raise ValueError("Mastery weights must sum to 1")
+        if self.mastery_needs_review_threshold >= self.mastery_strong_threshold:
+            raise ValueError("MASTERY_NEEDS_REVIEW_THRESHOLD must be below MASTERY_STRONG_THRESHOLD")
         return self
 
 

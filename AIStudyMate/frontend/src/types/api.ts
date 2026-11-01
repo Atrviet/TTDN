@@ -65,3 +65,9 @@ export interface KnowledgeNode { id: UUID; name: string; normalized_name: string
 export interface KnowledgeEdge { id: UUID; source: UUID; target: UUID; relation_type: KnowledgeRelationType; confidence: number; source_reference: KnowledgeSource | null }
 export interface KnowledgeGraphSummary { id: UUID; title: string; description: string | null; document_ids: UUID[]; node_count: number; edge_count: number; created_at: string; updated_at: string }
 export interface KnowledgeGraph extends KnowledgeGraphSummary { nodes: KnowledgeNode[]; edges: KnowledgeEdge[] }
+export type MasteryLevel = "needs_review" | "developing" | "strong";
+export interface MasteryComponent { score: number | null; evidence_count: number; configured_weight: number; effective_weight: number }
+export interface TopicMastery { id: UUID; topic_id: UUID | null; topic_key: string; topic_name: string; mastery_score: number; mastery_percentage: number; level: MasteryLevel; evidence_count: number; last_practiced_at: string | null; last_calculated_at: string; components: Record<string, MasteryComponent> }
+export interface MasteryList { items: TopicMastery[]; thresholds: Record<string, number>; formula: string }
+export interface LearningRecommendation { id: UUID; topic_key: string; topic_name: string; recommendation_type: string; title: string; rationale: string; action_url: string | null; metadata: Record<string, unknown> }
+export interface RecalculateMastery { topics_calculated: number; mappings_created: number; recommendations_created: number; mastery: MasteryList }

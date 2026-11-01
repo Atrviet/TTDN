@@ -1,6 +1,6 @@
 import type { AxiosResponse } from "axios";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { apiError, authApi, chatApi, http, knowledgeGraphsApi, tokenStore } from "../lib/api";
+import { apiError, authApi, chatApi, http, knowledgeGraphsApi, learningApi, tokenStore } from "../lib/api";
 
 describe("typed API client", () => {
   beforeEach(() => { tokenStore.clear(); });
@@ -42,6 +42,12 @@ describe("typed API client", () => {
     };
     await knowledgeGraphsApi.generate({ title: "Python", document_ids: ["d"] });
     expect(url).toBe("/knowledge-graphs/generate"); expect(body).toContain('"document_ids":["d"]');
+  });
+
+  it("recalculates mastery without sending fabricated client data", async () => {
+    let url = ""; let body: unknown = "unexpected";
+    http.defaults.adapter = async (config) => { url=String(config.url);body=config.data;return {data:{topics_calculated:0,mappings_created:0,recommendations_created:0,mastery:{items:[],thresholds:{},formula:"deterministic"}},status:200,statusText:"OK",headers:{},config} as AxiosResponse; };
+    const result=await learningApi.recalculate();expect(url).toBe("/learning/mastery/recalculate");expect(body).toBeUndefined();expect(result.topics_calculated).toBe(0);
   });
 
   it("parses authenticated SSE tokens, citations and completion", async () => {

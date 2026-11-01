@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BarChart3, Bot, BrainCircuit, CalendarDays, FileText, GraduationCap, Layers3, LayoutDashboard, LogOut, Menu, MessageSquare, Network, User, X } from "lucide-react";
+import { BarChart3, Bot, BrainCircuit, CalendarDays, FileText, GraduationCap, Layers3, LayoutDashboard, LogOut, Menu, MessageSquare, Network, Target, User, X } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 
@@ -11,6 +11,7 @@ const nav = [
   ["/study-plans", "Kế hoạch học", CalendarDays],
   ["/tutor", "AI Tutor", GraduationCap],
   ["/knowledge-graphs", "Sơ đồ kiến thức", Network],
+  ["/learning", "Điểm yếu học tập", Target],
   ["/profile", "Hồ sơ", User],
 ] as const;
 

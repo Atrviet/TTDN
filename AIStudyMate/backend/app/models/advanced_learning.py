@@ -7,6 +7,7 @@ from uuid import UUID
 
 from sqlalchemy import (
     CheckConstraint,
+    Boolean,
     Column,
     Date,
     DateTime,
@@ -460,6 +461,9 @@ class TopicMastery(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     mastery_score: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False)
     evidence_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     last_evidence_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_practiced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_calculated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    evidence_details: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
 
     user: Mapped[User] = relationship(back_populates="topic_mastery")
     concept: Mapped[KnowledgeConcept | None] = relationship(back_populates="mastery_records")
@@ -492,6 +496,29 @@ class LearningRecommendation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         server_default=RecommendationStatus.PENDING.value,
     )
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    action_url: Mapped[str | None] = mapped_column(String(1024))
+    recommendation_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
 
     topic_mastery: Mapped[TopicMastery] = relationship(back_populates="recommendations")
     document: Mapped[Document | None] = relationship()
+
+
+class LearningTopicMapping(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "learning_topic_mappings"
+    __table_args__ = (
+        UniqueConstraint("user_id", "resource_type", "resource_id", name="uq_learning_topic_mapping_resource"),
+        CheckConstraint("confidence BETWEEN 0 AND 1", name="ck_learning_topic_mapping_confidence_range"),
+        Index("ix_learning_topic_mappings_user_topic", "user_id", "topic_key"),
+    )
+
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    resource_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    resource_id: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), nullable=False)
+    topic_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    topic_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    concept_id: Mapped[UUID | None] = mapped_column(ForeignKey("knowledge_concepts.id", ondelete="SET NULL"), index=True)
+    provenance: Mapped[str] = mapped_column(String(64), nullable=False)
+    confidence: Mapped[Decimal] = mapped_column(Numeric(4, 3), nullable=False)
+    is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+
+    concept: Mapped[KnowledgeConcept | None] = relationship()
