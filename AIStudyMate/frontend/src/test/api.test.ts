@@ -1,6 +1,6 @@
 import type { AxiosResponse } from "axios";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { apiError, authApi, chatApi, http, tokenStore } from "../lib/api";
+import { apiError, authApi, chatApi, http, knowledgeGraphsApi, tokenStore } from "../lib/api";
 
 describe("typed API client", () => {
   beforeEach(() => { tokenStore.clear(); });
@@ -32,6 +32,16 @@ describe("typed API client", () => {
 
   it("returns a safe Vietnamese fallback for unknown errors", () => {
     expect(apiError(new Error("internal secret"))).toBe("Đã có lỗi xảy ra. Vui lòng thử lại.");
+  });
+
+  it("uses the real knowledge graph generation contract", async () => {
+    let url = ""; let body = "";
+    http.defaults.adapter = async (config) => {
+      url = String(config.url); body = String(config.data);
+      return { data: { id: "g", title: "Python", description: null, document_ids: ["d"], node_count: 0, edge_count: 0, created_at: "2026-11-01T00:00:00Z", updated_at: "2026-11-01T00:00:00Z", nodes: [], edges: [] }, status: 201, statusText: "Created", headers: {}, config } as AxiosResponse;
+    };
+    await knowledgeGraphsApi.generate({ title: "Python", document_ids: ["d"] });
+    expect(url).toBe("/knowledge-graphs/generate"); expect(body).toContain('"document_ids":["d"]');
   });
 
   it("parses authenticated SSE tokens, citations and completion", async () => {

@@ -59,3 +59,9 @@ export type TutorDifficulty = "beginner" | "intermediate" | "advanced";
 export interface TutorSession { id: UUID; title: string; learning_objective: string | null; document_ids: UUID[]; created_at: string; updated_at: string }
 export interface TutorSessionDetail extends TutorSession { messages: ChatMessage[] }
 export interface TutorReply { session_id: UUID; mode: TutorMode; difficulty: TutorDifficulty; user_message: ChatMessage; assistant_message: ChatMessage; model: string | null; execution_steps: number }
+export type KnowledgeRelationType = "prerequisite_of" | "part_of" | "related_to" | "example_of" | "contrasts_with";
+export interface KnowledgeSource { document_id: UUID; document_title: string; chunk_id: string; page_number: number; definition: string | null; confidence: number }
+export interface KnowledgeNode { id: UUID; name: string; normalized_name: string; definition: string | null; sources: KnowledgeSource[]; ambiguous: boolean }
+export interface KnowledgeEdge { id: UUID; source: UUID; target: UUID; relation_type: KnowledgeRelationType; confidence: number; source_reference: KnowledgeSource | null }
+export interface KnowledgeGraphSummary { id: UUID; title: string; description: string | null; document_ids: UUID[]; node_count: number; edge_count: number; created_at: string; updated_at: string }
+export interface KnowledgeGraph extends KnowledgeGraphSummary { nodes: KnowledgeNode[]; edges: KnowledgeEdge[] }

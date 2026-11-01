@@ -6,6 +6,7 @@ import type {
   DueFlashcards, FlashcardDeck, FlashcardDeckSummary, FlashcardRating, FlashcardReview,
   FlashcardStats,
   StudyPlan, StudyPlanSummary, StudyTask, StudyTaskStatus, TutorDifficulty, TutorMode, TutorReply, TutorSession, TutorSessionDetail,
+  KnowledgeGraph, KnowledgeGraphSummary,
 } from "../types/api";
 
 const baseURL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1";
@@ -217,4 +218,11 @@ export const tutorApi = {
   update: async (id: string, input: { title?: string; learning_objective?: string; document_ids?: string[] }) => (await http.patch<TutorSession>(`/tutor/sessions/${id}`, input)).data,
   remove: async (id: string) => { await http.delete(`/tutor/sessions/${id}`); },
   send: async (id: string, input: { message: string; mode: TutorMode; difficulty: TutorDifficulty; document_ids: string[] }) => (await http.post<TutorReply>(`/tutor/sessions/${id}/messages`, input)).data,
+};
+
+export const knowledgeGraphsApi = {
+  list: async () => (await http.get<{ items: KnowledgeGraphSummary[] }>("/knowledge-graphs")).data.items,
+  get: async (id: string) => (await http.get<KnowledgeGraph>(`/knowledge-graphs/${id}`)).data,
+  generate: async (input: { title: string; description?: string; document_ids: string[] }) => (await http.post<KnowledgeGraph>("/knowledge-graphs/generate", input)).data,
+  remove: async (id: string) => { await http.delete(`/knowledge-graphs/${id}`); },
 };

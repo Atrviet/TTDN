@@ -681,3 +681,9 @@ Users with no completed attempts receive zero counts, `null` average/highest per
 STEP 16 adds isolated tutor sessions, five teaching modes, bounded LangGraph execution, authorized
 RAG citations, real quiz/flashcard evidence, and a React Tutor workspace. See
 [the STEP 16 architecture and API guide](docs/step16-personalized-ai-tutor.md).
+
+## Knowledge Graphs
+
+STEP 17 extracts normalized concepts and typed relationships from authorized indexed PDFs, persists
+them in PostgreSQL with page/chunk provenance, and visualizes them with React Flow. See the
+[STEP 17 architecture and API guide](docs/step17-knowledge-graphs.md).

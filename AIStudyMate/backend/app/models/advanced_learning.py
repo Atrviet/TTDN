@@ -87,6 +87,14 @@ study_plan_documents = Table(
     Index("ix_study_plan_documents_document_id", "document_id"),
 )
 
+knowledge_graph_documents = Table(
+    "knowledge_graph_documents",
+    Base.metadata,
+    Column("graph_id", PostgreSQLUUID(as_uuid=True), ForeignKey("knowledge_graphs.id", ondelete="CASCADE"), primary_key=True),
+    Column("document_id", PostgreSQLUUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), primary_key=True),
+    Index("ix_knowledge_graph_documents_document_id", "document_id"),
+)
+
 
 class FlashcardDeck(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "flashcard_decks"
@@ -330,6 +338,43 @@ class TutorMessage(UUIDPrimaryKeyMixin, Base):
     session: Mapped[TutorSession] = relationship(back_populates="messages")
 
 
+class KnowledgeGraph(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "knowledge_graphs"
+    __table_args__ = (Index("ix_knowledge_graphs_user_updated_at", "user_id", "updated_at"),)
+
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+
+    user: Mapped[User] = relationship()
+    documents: Mapped[list[Document]] = relationship(secondary=knowledge_graph_documents)
+    concept_sources: Mapped[list[KnowledgeGraphConcept]] = relationship(back_populates="graph", cascade="all, delete-orphan", passive_deletes=True)
+    relations: Mapped[list[KnowledgeRelation]] = relationship(back_populates="graph", cascade="all, delete-orphan", passive_deletes=True)
+
+
+class KnowledgeGraphConcept(UUIDPrimaryKeyMixin, Base):
+    __tablename__ = "knowledge_graph_concepts"
+    __table_args__ = (
+        UniqueConstraint("graph_id", "concept_id", "document_chunk_id", name="uq_knowledge_graph_concept_source"),
+        CheckConstraint("page_number > 0", name="ck_knowledge_graph_concepts_page_positive"),
+        CheckConstraint("confidence BETWEEN 0 AND 1", name="ck_knowledge_graph_concepts_confidence_range"),
+        Index("ix_knowledge_graph_concepts_graph_concept", "graph_id", "concept_id"),
+    )
+
+    graph_id: Mapped[UUID] = mapped_column(ForeignKey("knowledge_graphs.id", ondelete="CASCADE"), nullable=False)
+    concept_id: Mapped[UUID] = mapped_column(ForeignKey("knowledge_concepts.id", ondelete="CASCADE"), nullable=False)
+    document_id: Mapped[UUID] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    document_chunk_id: Mapped[UUID] = mapped_column(ForeignKey("document_chunks.id", ondelete="CASCADE"), nullable=False)
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    confidence: Mapped[Decimal] = mapped_column(Numeric(4, 3), nullable=False)
+    definition: Mapped[str | None] = mapped_column(Text)
+
+    graph: Mapped[KnowledgeGraph] = relationship(back_populates="concept_sources")
+    concept: Mapped[KnowledgeConcept] = relationship(back_populates="graph_sources")
+    document: Mapped[Document] = relationship()
+    document_chunk: Mapped[DocumentChunk] = relationship()
+
+
 class KnowledgeConcept(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "knowledge_concepts"
     __table_args__ = (
@@ -354,6 +399,7 @@ class KnowledgeConcept(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         cascade="all, delete-orphan", passive_deletes=True,
     )
     mastery_records: Mapped[list[TopicMastery]] = relationship(back_populates="concept")
+    graph_sources: Mapped[list[KnowledgeGraphConcept]] = relationship(back_populates="concept", cascade="all, delete-orphan", passive_deletes=True)
 
 
 class KnowledgeRelation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -361,14 +407,12 @@ class KnowledgeRelation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __table_args__ = (
         CheckConstraint("source_concept_id <> target_concept_id", name="ck_knowledge_relations_distinct"),
         CheckConstraint("confidence BETWEEN 0 AND 1", name="ck_knowledge_relations_confidence_range"),
-        UniqueConstraint(
-            "source_concept_id", "target_concept_id", "relation_type", "document_id",
-            name="uq_knowledge_relations_edge_provenance",
-        ),
+        UniqueConstraint("graph_id", "source_concept_id", "target_concept_id", "relation_type", "document_chunk_id", name="uq_knowledge_relations_graph_edge_source"),
         Index("ix_knowledge_relations_source_type", "source_concept_id", "relation_type"),
         Index("ix_knowledge_relations_target_id", "target_concept_id"),
     )
 
+    graph_id: Mapped[UUID | None] = mapped_column(ForeignKey("knowledge_graphs.id", ondelete="CASCADE"), index=True)
     source_concept_id: Mapped[UUID] = mapped_column(
         ForeignKey("knowledge_concepts.id", ondelete="CASCADE"), nullable=False
     )
@@ -383,7 +427,9 @@ class KnowledgeRelation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     document_chunk_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("document_chunks.id", ondelete="SET NULL"), index=True
     )
+    page_number: Mapped[int | None] = mapped_column(Integer)
 
+    graph: Mapped[KnowledgeGraph | None] = relationship(back_populates="relations")
     source_concept: Mapped[KnowledgeConcept] = relationship(
         back_populates="outgoing_relations", foreign_keys=[source_concept_id]
     )

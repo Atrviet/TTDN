@@ -1,7 +1,7 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileText, Plus, Search, Trash2, UploadCloud } from "lucide-react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { apiError, documentsApi } from "../lib/api";
 import { Badge, buttonClass, cardClass, EmptyState, ErrorState, inputClass, Loading, PageHeader } from "../components/ui";
 
@@ -21,10 +21,11 @@ export function UploadPage() {
 }
 
 export function DocumentDetailPage() {
-  const { id = "" } = useParams(); const nav = useNavigate(); const client = useQueryClient();
+  const { id = "" } = useParams(); const nav = useNavigate(); const client = useQueryClient(); const [params] = useSearchParams(); const requestedPage = Number(params.get("page"));
   const doc = useQuery({ queryKey: ["document", id], queryFn: () => documentsApi.get(id) }); const content = useQuery({ queryKey: ["document-content", id], queryFn: () => documentsApi.content(id), enabled: !!doc.data });
   const indexing = useMutation({ mutationFn: () => documentsApi.index(id), onSuccess: () => { void doc.refetch(); void client.invalidateQueries({ queryKey: ["documents"] }); } });
   const removing = useMutation({ mutationFn: () => documentsApi.remove(id), onSuccess: () => nav("/documents") });
+  useEffect(() => { if (content.data && Number.isInteger(requestedPage) && requestedPage > 0) document.querySelectorAll("article").item(requestedPage - 1)?.scrollIntoView({ behavior: "smooth", block: "center" }); }, [content.data, requestedPage]);
   if (doc.isLoading) return <Loading />; if (doc.error || !doc.data) return <ErrorState message={apiError(doc.error)} />;
   return <><PageHeader eyebrow="Document" title={doc.data.title} description={doc.data.original_filename} action={<div className="flex gap-2">{doc.data.indexing_status !== "indexed" && <button className={buttonClass} onClick={() => indexing.mutate()} disabled={indexing.isPending}>Tạo chỉ mục</button>}<button aria-label="Xóa tài liệu" className="rounded-xl border border-red-200 p-2.5 text-red-600 hover:bg-red-50" onClick={() => confirm("Xóa tài liệu này?") && removing.mutate()}><Trash2 /></button></div>} /><div className="mb-6 grid gap-4 sm:grid-cols-3"><div className={cardClass}><p className="text-sm text-slate-500">Trạng thái PDF</p><div className="mt-2"><Badge tone={tone(doc.data.processing_status)}>{doc.data.processing_status}</Badge></div></div><div className={cardClass}><p className="text-sm text-slate-500">Chỉ mục RAG</p><div className="mt-2"><Badge tone={tone(doc.data.indexing_status)}>{doc.data.indexing_status}</Badge></div></div><div className={cardClass}><p className="text-sm text-slate-500">Số trang</p><p className="mt-1 text-2xl font-black text-ink">{doc.data.page_count ?? 0}</p></div></div>{indexing.error && <ErrorState message={apiError(indexing.error)} />}{content.isLoading ? <Loading label="Đang tải nội dung..." /> : content.error ? <ErrorState message={apiError(content.error)} /> : <div className="space-y-4">{content.data?.pages.map((page) => <article key={page.page_number} className={cardClass}><p className="mb-3 text-xs font-bold uppercase tracking-wider text-ocean">Trang {page.page_number}</p><p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{page.text || "Trang không có văn bản trích xuất."}</p></article>)}</div>}</>;
 }

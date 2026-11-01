@@ -78,6 +78,11 @@ class Settings(BaseSettings):
     tutor_history_max_chars: int = Field(default=12000, ge=0, le=100000)
     tutor_context_top_k: int = Field(default=6, ge=1, le=20)
     tutor_context_max_chars: int = Field(default=24000, ge=1000, le=200000)
+    knowledge_graph_batch_size: int = Field(default=6, ge=1, le=20)
+    knowledge_graph_max_chunks: int = Field(default=120, ge=1, le=1000)
+    knowledge_graph_max_output_tokens: int = Field(default=4096, ge=512, le=8192)
+    knowledge_graph_timeout_seconds: float = Field(default=60, gt=0, le=300)
+    knowledge_graph_validation_retries: int = Field(default=1, ge=0, le=3)
     document_storage_dir: Path = Path("./document_storage")
     max_pdf_size_mb: int = Field(default=20, gt=0, le=100)
     cors_origins: list[AnyHttpUrl] = [AnyHttpUrl("http://localhost:5173")]

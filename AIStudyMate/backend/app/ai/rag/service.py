@@ -161,6 +161,36 @@ class RAGService:
             top_k=top_k,
         )
 
+    async def get_authorized_indexed_chunks(
+        self, *, document_ids: list[UUID], user_id: UUID
+    ) -> list[VectorSearchResult]:
+        """Return all indexed chunk texts for bounded offline AI pipelines.
+
+        Text is deterministically reconstructed with the same configured chunker while PostgreSQL
+        remains authoritative for which chunk IDs currently belong to the index.
+        """
+        unique_ids = list(dict.fromkeys(document_ids))
+        documents = await self.repository.get_owned_documents(unique_ids, user_id)
+        if len(documents) != len(unique_ids):
+            raise RAGDocumentNotFoundError
+        output: list[VectorSearchResult] = []
+        for document in documents:
+            if document.indexing_status != RAGIndexingStatus.INDEXED:
+                raise DocumentNotIndexableError("All documents must be indexed before extraction")
+            self._ensure_matching_configuration(document)
+            chunks = await run_in_threadpool(self.chunker.chunk_pages, document.id, document.extracted_pages or [])
+            persisted = await self.repository.get_chunks_by_chroma_ids(
+                [f"{document.id}:{chunk.chunk_index}" for chunk in chunks]
+            )
+            persisted_by_id = {chunk.chroma_id: chunk for chunk in persisted}
+            for chunk in chunks:
+                chroma_id = f"{document.id}:{chunk.chunk_index}"
+                db_chunk = persisted_by_id.get(chroma_id)
+                if db_chunk is None:
+                    continue
+                output.append(VectorSearchResult(chroma_id=chroma_id, text=chunk.text, distance=0.0, metadata={"document_id": str(document.id), "document_title": document.title, "page_number": db_chunk.page_number or chunk.page_number, "chunk_index": chunk.chunk_index}))
+        return output
+
     def _ensure_indexable(self, document: Document) -> None:
         if document.processing_status != DocumentProcessingStatus.READY:
             raise DocumentNotIndexableError("Document extraction is not ready")

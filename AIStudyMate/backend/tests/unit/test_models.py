@@ -41,6 +41,9 @@ EXPECTED_TABLES = {
     "tutor_messages",
     "knowledge_concepts",
     "knowledge_relations",
+    "knowledge_graphs",
+    "knowledge_graph_documents",
+    "knowledge_graph_concepts",
     "topic_mastery",
     "learning_recommendations",
 }
@@ -56,7 +59,7 @@ def test_all_expected_models_are_registered() -> None:
     assert all(
         table.primary_key.columns.keys() == ["id"]
         for name, table in Base.metadata.tables.items()
-        if name not in {"tutor_session_documents", "flashcard_deck_documents", "study_plan_documents"}
+        if name not in {"tutor_session_documents", "flashcard_deck_documents", "study_plan_documents", "knowledge_graph_documents"}
     )
     assert list(Base.metadata.tables["tutor_session_documents"].primary_key.columns.keys()) == [
         "session_id",
@@ -67,6 +70,7 @@ def test_all_expected_models_are_registered() -> None:
         "document_id",
     ]
     assert list(Base.metadata.tables["study_plan_documents"].primary_key.columns.keys()) == ["plan_id", "document_id"]
+    assert list(Base.metadata.tables["knowledge_graph_documents"].primary_key.columns.keys()) == ["graph_id", "document_id"]
 
 
 def test_mappers_and_required_relationships_are_configured() -> None:
@@ -120,7 +124,7 @@ def test_mappers_and_required_relationships_are_configured() -> None:
         "user", "documents", "messages"
     }
     assert {relationship.key for relationship in KnowledgeConcept.__mapper__.relationships} == {
-        "user", "outgoing_relations", "incoming_relations", "mastery_records"
+        "user", "outgoing_relations", "incoming_relations", "mastery_records", "graph_sources"
     }
     assert {relationship.key for relationship in TopicMastery.__mapper__.relationships} == {
         "user", "concept", "recommendations"
@@ -185,6 +189,9 @@ def test_foreign_key_delete_behaviors_are_explicit() -> None:
         "tutor_messages": {"CASCADE"},
         "knowledge_concepts": {"CASCADE"},
         "knowledge_relations": {"CASCADE", "SET NULL"},
+        "knowledge_graphs": {"CASCADE"},
+        "knowledge_graph_documents": {"CASCADE"},
+        "knowledge_graph_concepts": {"CASCADE"},
         "topic_mastery": {"CASCADE", "SET NULL"},
         "learning_recommendations": {"CASCADE", "SET NULL"},
     }
