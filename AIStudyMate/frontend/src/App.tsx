@@ -2,7 +2,6 @@ import { Route, Routes } from "react-router-dom";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { AppShell } from "./components/AppShell";
 import { AgentPage, ChatPage } from "./pages/ChatPages";
-import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { LoginPage, RegisterPage } from "./pages/AuthPages";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DocumentDetailPage, DocumentsPage, UploadPage } from "./pages/DocumentPages";
@@ -13,6 +12,7 @@ import { FlashcardDeckPage, FlashcardsPage, FlashcardStudyPage } from "./pages/F
 import { StudyPlanDetailPage, StudyPlansPage } from "./pages/StudyPlanPages";
 import { TutorPage } from "./pages/TutorPage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
+import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { LearningWeaknessPage } from "./pages/LearningWeaknessPage";
 
 export default function App() {
